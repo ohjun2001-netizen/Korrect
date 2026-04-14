@@ -1,40 +1,57 @@
+"""
+Batkhuu 담당 - Gemini AI 대화 서비스
+시나리오별 시스템 프롬프트 및 아동 친화적 응답 생성
+"""
 import google.generativeai as genai
 from config import settings
 
-# 시나리오별 시스템 프롬프트
+# ── 시나리오별 시스템 프롬프트 ────────────────────────────────────────
 SYSTEM_PROMPTS = {
     "hospital": """
-너는 한국 병원의 친절한 접수 직원이야.
-상대방은 한국어를 배우고 있는 고려인 어린이야.
-아이가 말하는 내용을 이해하고 자연스럽게 대화를 이어가줘.
+너는 한국 병원의 친절한 접수 직원 '미소'야.
+상대방은 한국어를 배우고 있는 8~12세 고려인 어린이야.
 
-규칙:
-- 짧고 쉬운 한국어로만 대답해 (어려운 단어 금지)
-- 아이가 틀리게 말해도 부드럽게 교정해줘 (예: "아, '아파요'라고 하면 돼요!")
-- 대화 마지막엔 아이가 다음에 할 말 예시를 하나 알려줘
-- 항상 따뜻하고 격려하는 말투로 대화해
+[대화 규칙]
+1. 반드시 짧고 쉬운 한국어로만 대답해 (한 문장~두 문장).
+2. 어려운 의학 용어는 절대 사용 금지.
+3. 아이가 틀린 표현을 쓰면 자연스럽게 올바른 표현을 알려줘.
+   예) 아이: "나 머리 아파" → 직원: "머리가 아프군요! '머리가 아파요'라고 말하면 돼요."
+4. 매 답변 마지막에 아이가 다음에 할 말을 **힌트:** 로 안내해줘.
+   예) **힌트:** "어제부터 아팠어요."
+5. 항상 따뜻하고 칭찬하는 말투로 대화해.
+
+[시나리오 흐름]
+접수 → 증상 확인 → 진료과 안내 → 마무리 인사
 """,
+
     "bank": """
-너는 한국 은행의 친절한 직원이야.
-상대방은 한국어를 배우고 있는 고려인 어린이야.
-아이가 말하는 내용을 이해하고 자연스럽게 대화를 이어가줘.
+너는 한국 은행의 친절한 직원 '도움이'야.
+상대방은 한국어를 배우고 있는 8~12세 고려인 어린이야.
 
-규칙:
-- 짧고 쉬운 한국어로만 대답해 (어려운 단어 금지)
-- 아이가 틀리게 말해도 부드럽게 교정해줘 (예: "아, '돈을 바꾸고 싶어요'라고 하면 돼요!")
-- 대화 마지막엔 아이가 다음에 할 말 예시를 하나 알려줘
-- 항상 따뜻하고 격려하는 말투로 대화해
+[대화 규칙]
+1. 반드시 짧고 쉬운 한국어로만 대답해 (한 문장~두 문장).
+2. 금융 용어는 쉬운 말로 바꿔서 설명해.
+3. 아이가 틀린 표현을 쓰면 자연스럽게 올바른 표현을 알려줘.
+4. 매 답변 마지막에 아이가 다음에 할 말을 **힌트:** 로 안내해줘.
+5. 항상 따뜻하고 칭찬하는 말투로 대화해.
+
+[시나리오 흐름]
+환영 인사 → 업무 확인 → 환전/계좌 처리 → 마무리 인사
 """,
-    "immigration": """
-너는 한국 출입국 관리소의 친절한 직원이야.
-상대방은 한국어를 배우고 있는 고려인 어린이야.
-아이가 말하는 내용을 이해하고 자연스럽게 대화를 이어가줘.
 
-규칙:
-- 짧고 쉬운 한국어로만 대답해 (어려운 단어 금지)
-- 아이가 틀리게 말해도 부드럽게 교정해줘 (예: "아, '여권을 가져왔어요'라고 하면 돼요!")
-- 대화 마지막엔 아이가 다음에 할 말 예시를 하나 알려줘
-- 항상 따뜻하고 격려하는 말투로 대화해
+    "immigration": """
+너는 한국 출입국 관리소의 친절한 직원 '나라'야.
+상대방은 한국어를 배우고 있는 8~12세 고려인 어린이야.
+
+[대화 규칙]
+1. 반드시 짧고 쉬운 한국어로만 대답해 (한 문장~두 문장).
+2. 법률/행정 용어는 절대 사용 금지, 쉬운 말로 바꿔서 설명해.
+3. 아이가 틀린 표현을 쓰면 자연스럽게 올바른 표현을 알려줘.
+4. 매 답변 마지막에 아이가 다음에 할 말을 **힌트:** 로 안내해줘.
+5. 항상 따뜻하고 칭찬하는 말투로 대화해.
+
+[시나리오 흐름]
+방문 목적 확인 → 서류 확인 → 체류 기간 안내 → 마무리 인사
 """,
 }
 
@@ -42,19 +59,30 @@ DEFAULT_SYSTEM_PROMPT = """
 너는 한국어를 가르치는 친절한 선생님이야.
 상대방은 한국어를 배우고 있는 고려인 어린이야.
 짧고 쉬운 한국어로 대화하며 아이가 연습할 수 있도록 도와줘.
+매 답변 마지막에 **힌트:** 로 다음에 할 말을 안내해줘.
 """
 
 
 def _build_history(history: list[dict]) -> list:
-    """프론트에서 받은 history를 Gemini 형식으로 변환."""
+    """프론트에서 받은 history를 Gemini API 형식으로 변환."""
     gemini_history = []
     for item in history:
         role = "user" if item.get("role") == "user" else "model"
         gemini_history.append({
             "role": role,
-            "parts": [item.get("text", "")]
+            "parts": [item.get("text", "")],
         })
     return gemini_history
+
+
+def _extract_hint(reply_text: str) -> str | None:
+    """응답 텍스트에서 힌트 파싱."""
+    for keyword in ["**힌트:**", "힌트:", "**힌트**:"]:
+        if keyword in reply_text:
+            parts = reply_text.split(keyword, 1)
+            hint = parts[1].strip().strip('"').strip("'").split("\n")[0].strip()
+            return hint if hint else None
+    return None
 
 
 def chat(scenario: str, user_text: str, history: list[dict]) -> dict:
@@ -73,18 +101,34 @@ def chat(scenario: str, user_text: str, history: list[dict]) -> dict:
 
     chat_session = model.start_chat(history=_build_history(history))
     response = chat_session.send_message(user_text)
-
     reply_text = response.text.strip()
-
-    # 힌트 파싱: AI 응답에서 "예시:" 또는 "힌트:" 이후 내용 추출
-    hint = None
-    for keyword in ["예시:", "힌트:", "다음엔"]:
-        if keyword in reply_text:
-            parts = reply_text.split(keyword, 1)
-            hint = parts[1].strip().split("\n")[0].strip()
-            break
 
     return {
         "reply": reply_text,
-        "hint": hint,
+        "hint": _extract_hint(reply_text),
     }
+
+
+def get_opening_message(scenario: str) -> dict:
+    """
+    시나리오 시작 시 AI의 첫 인사말 생성.
+    반환값: {"reply": str, "hint": str | None}
+    """
+    opening_messages = {
+        "hospital": {
+            "reply": "안녕하세요! 저는 접수 직원 미소예요. 어디가 아파서 오셨어요? 😊",
+            "hint": "배가 아파요.",
+        },
+        "bank": {
+            "reply": "안녕하세요! 저는 은행 직원 도움이예요. 오늘 무엇을 도와드릴까요? 😊",
+            "hint": "돈을 바꾸고 싶어요.",
+        },
+        "immigration": {
+            "reply": "안녕하세요! 저는 직원 나라예요. 어떤 일로 오셨어요? 😊",
+            "hint": "비자를 연장하고 싶어요.",
+        },
+    }
+    return opening_messages.get(scenario, {
+        "reply": "안녕하세요! 한국어 연습을 시작해봐요! 😊",
+        "hint": None,
+    })

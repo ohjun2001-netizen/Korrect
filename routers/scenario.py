@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from models.schemas import ProcessResponse, STTResponse, ChatResponse
 from services import whisper_service, prosody_service, gemini_service, scoring_service
 
@@ -35,16 +35,26 @@ async def get_scenario(scenario_id: str):
         return json.load(f)
 
 
+@router.get("/{scenario_id}/opening")
+async def get_opening(scenario_id: str):
+    """시나리오 시작 시 AI 첫 인사말 반환."""
+    return gemini_service.get_opening_message(scenario_id)
+
+
 @router.post("/{scenario_id}/process", response_model=ProcessResponse)
 async def process_turn(
     scenario_id: str,
     audio: UploadFile = File(...),
-    history: str = "[]",                # JSON 문자열로 전달
-    turn_index: int = 0,                # 현재 대화 턴 번호 (레퍼런스 매칭용)
+    history: str = Form(default="[]"),
+    turn_index: int = Form(default=0),
 ):
     """
     메인 파이프라인: 오디오 → STT → 운율분석 → AI 대화 → 점수 반환.
     Flutter 앱에서 한 번의 요청으로 전체 결과를 받아갈 수 있음.
+
+    - audio: 아동이 녹음한 오디오 파일 (wav)
+    - history: 이전 대화 기록 JSON 문자열 (선택)
+    - turn_index: 현재 대화 턴 번호, 레퍼런스 오디오 매칭에 사용
     """
     audio_bytes = await audio.read()
     if len(audio_bytes) == 0:
@@ -58,12 +68,24 @@ async def process_turn(
     prosody = None
     total_score = None
     ref_path = REF_DIR / scenario_id / f"{turn_index}.wav"
+
     if ref_path.exists():
         ref_bytes = ref_path.read_bytes()
         prosody_result = prosody_service.analyze(audio_bytes, ref_bytes)
         from models.schemas import ProsodyResponse
         prosody = ProsodyResponse(**prosody_result)
         total_score = scoring_service.compute_total_score(prosody.score, None)
+    else:
+        # 레퍼런스 없을 때: 러시아어 억양 패턴만 분석해서 피드백 제공
+        accent_result = prosody_service.analyze_with_feedback(audio_bytes)
+        from models.schemas import ProsodyResponse
+        if accent_result["pitch_contour"]:
+            prosody = ProsodyResponse(
+                pitch_contour=accent_result["pitch_contour"],
+                ref_pitch_contour=[],
+                score=0.0,
+                dtw_distance=0.0,
+            )
 
     # 3. AI 대화
     history_data = json.loads(history)

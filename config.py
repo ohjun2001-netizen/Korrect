@@ -4,8 +4,14 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
-    whisper_mode: str = "local"       # "local" or "api"
-    whisper_model_size: str = "small"  # tiny, base, small, medium, large
+
+    # STT 모드: "local" | "api" (OpenAI) | "google"
+    whisper_mode: str = "local"
+    # local 모드 모델 크기: tiny, base, small, medium, large
+    whisper_model_size: str = "small"
+
+    # Google Cloud STT 서비스 계정 키 파일 경로 (google 모드일 때만 사용)
+    google_credentials_path: str = ""
 
     class Config:
         env_file = ".env"
