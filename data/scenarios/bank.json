@@ -1,0 +1,28 @@
+{
+  "id": "bank",
+  "title": "은행",
+  "description": "은행에서 환전하고 계좌를 만드는 연습",
+  "turns": [
+    {
+      "index": 0,
+      "speaker": "ai",
+      "text": "안녕하세요! 무엇을 도와드릴까요?",
+      "expected_user_reply": "돈을 바꾸고 싶어요.",
+      "hint": "돈을 바꾸고 싶어요."
+    },
+    {
+      "index": 1,
+      "speaker": "ai",
+      "text": "어느 나라 돈으로 바꿔드릴까요?",
+      "expected_user_reply": "한국 돈으로 바꿔 주세요.",
+      "hint": "한국 돈으로 바꿔 주세요."
+    },
+    {
+      "index": 2,
+      "speaker": "ai",
+      "text": "얼마나 바꾸실 건가요?",
+      "expected_user_reply": "만 원어치 바꿔 주세요.",
+      "hint": "만 원어치 바꿔 주세요."
+    }
+  ]
+}

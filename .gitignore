@@ -1,0 +1,27 @@
+# 환경변수 (절대 올리면 안됨)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Whisper 로컬 모델 캐시
+*.pt
+
+# 오디오 임시파일
+*.wav
+*.mp3
+*.m4a
+data/references/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

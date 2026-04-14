@@ -1,0 +1,35 @@
+{
+  "id": "hospital",
+  "title": "병원",
+  "description": "병원에서 접수하고 증상을 설명하는 연습",
+  "turns": [
+    {
+      "index": 0,
+      "speaker": "ai",
+      "text": "안녕하세요! 어디가 아파서 오셨어요?",
+      "expected_user_reply": "배가 아파요.",
+      "hint": "배가 아파요."
+    },
+    {
+      "index": 1,
+      "speaker": "ai",
+      "text": "언제부터 아팠어요?",
+      "expected_user_reply": "어제부터 아팠어요.",
+      "hint": "어제부터 아팠어요."
+    },
+    {
+      "index": 2,
+      "speaker": "ai",
+      "text": "열도 있어요?",
+      "expected_user_reply": "네, 열이 있어요.",
+      "hint": "네, 열이 있어요."
+    },
+    {
+      "index": 3,
+      "speaker": "ai",
+      "text": "이름이 뭐예요?",
+      "expected_user_reply": "제 이름은 [이름]이에요.",
+      "hint": "제 이름은 [이름]이에요."
+    }
+  ]
+}

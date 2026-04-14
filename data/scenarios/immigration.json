@@ -1,0 +1,28 @@
+{
+  "id": "immigration",
+  "title": "출입국 관리소",
+  "description": "출입국 관리소에서 체류 관련 업무를 처리하는 연습",
+  "turns": [
+    {
+      "index": 0,
+      "speaker": "ai",
+      "text": "안녕하세요! 어떤 일로 오셨어요?",
+      "expected_user_reply": "비자를 연장하고 싶어요.",
+      "hint": "비자를 연장하고 싶어요."
+    },
+    {
+      "index": 1,
+      "speaker": "ai",
+      "text": "여권 가져오셨어요?",
+      "expected_user_reply": "네, 여권 가져왔어요.",
+      "hint": "네, 여권 가져왔어요."
+    },
+    {
+      "index": 2,
+      "speaker": "ai",
+      "text": "한국에 얼마나 있을 예정이에요?",
+      "expected_user_reply": "일 년 더 있고 싶어요.",
+      "hint": "일 년 더 있고 싶어요."
+    }
+  ]
+}
