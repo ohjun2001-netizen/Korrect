@@ -86,13 +86,19 @@ async def process_turn(
             )
 
     # 3. AI 대화
-    history_data = json.loads(history)
-    chat_result = gemini_service.chat(
-        scenario=scenario_id,
-        user_text=stt.text,
-        history=history_data,
-    )
-    chat = ChatResponse(**chat_result)
+    if not stt.text.strip():
+        chat = ChatResponse(
+            reply="잘 못 들었어요. 다시 한 번 말해줄래요?",
+            hint=None,
+        )
+    else:
+        history_data = json.loads(history)
+        chat_result = gemini_service.chat(
+            scenario=scenario_id,
+            user_text=stt.text,
+            history=history_data,
+        )
+        chat = ChatResponse(**chat_result)
 
     return ProcessResponse(
         stt=stt,

@@ -43,9 +43,16 @@ def _transcribe_local(audio_bytes: bytes) -> dict:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
     try:
+        debug_path = os.path.join(tempfile.gettempdir(), "korrect_last_recording.wav")
+        with open(debug_path, "wb") as f:
+            f.write(audio_bytes)
+        print(f"[Whisper] 입력 파일 크기: {len(audio_bytes)}B")
+        print(f"[Whisper] 디버깅용 복사본: {debug_path}")
         result = model.transcribe(tmp_path, language="ko")
+        text = result["text"].strip()
+        print(f"[Whisper] 인식 결과: '{text}' (language={result.get('language')})")
         return {
-            "text": result["text"].strip(),
+            "text": text,
             "language": result.get("language", "ko"),
         }
     finally:

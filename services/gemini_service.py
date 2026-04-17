@@ -95,7 +95,7 @@ def chat(scenario: str, user_text: str, history: list[dict]) -> dict:
     system_prompt = SYSTEM_PROMPTS.get(scenario, DEFAULT_SYSTEM_PROMPT)
 
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-2.5-flash-lite",
         system_instruction=system_prompt,
     )
 

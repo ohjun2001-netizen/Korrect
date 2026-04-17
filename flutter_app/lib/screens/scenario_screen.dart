@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../models/scenario_model.dart';
@@ -74,13 +73,17 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   }
 
   Future<void> _startRecording() async {
-    final hasPermission = await AudioService.hasPermission();
-    if (!hasPermission) {
-      _showSnackBar('마이크 권한이 필요해요!');
-      return;
+    try {
+      final hasPermission = await AudioService.hasPermission();
+      if (!hasPermission) {
+        _showSnackBar('마이크 권한이 필요해요!');
+        return;
+      }
+      await AudioService.startRecording();
+      setState(() => _isRecording = true);
+    } catch (e) {
+      _showSnackBar('녹음 시작 실패: $e');
     }
-    await AudioService.startRecording();
-    setState(() => _isRecording = true);
   }
 
   Future<void> _stopAndProcess() async {
@@ -89,17 +92,19 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
       _isLoading = true;
     });
 
-    final audioFile = await AudioService.stopRecording();
-    if (audioFile == null) {
+    final audio = await AudioService.stopRecording();
+    if (audio == null) {
       setState(() => _isLoading = false);
       _showSnackBar('녹음 파일을 찾을 수 없어요.');
       return;
     }
+    final size = audio.bytes?.length ?? await audio.file!.length();
+    _showSnackBar('녹음 파일 크기: ${size}B');
 
     try {
       final result = await ApiService.processTurn(
         scenarioId: widget.scenario.id,
-        audioFile: audioFile,
+        audio: audio,
         history: List.from(_history),
         turnIndex: _turnIndex,
       );

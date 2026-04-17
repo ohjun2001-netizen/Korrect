@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  record: ^5.0.0
+  record: ^6.0.0
   fl_chart: ^0.68.0
   permission_handler: ^11.3.0
   path_provider: ^2.1.3

@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../constants.dart';
 import '../models/scenario_model.dart';
 import '../models/process_result.dart';
+import 'audio_service.dart';
 
 class ApiService {
   static Future<List<Scenario>> getScenarios() async {
@@ -44,7 +44,7 @@ class ApiService {
 
   static Future<ProcessResult> processTurn({
     required String scenarioId,
-    required File audioFile,
+    required RecordedAudio audio,
     required List<Map<String, String>> history,
     required int turnIndex,
   }) async {
@@ -53,11 +53,19 @@ class ApiService {
       Uri.parse('${AppConstants.baseUrl}/api/scenario/$scenarioId/process'),
     );
 
-    request.files.add(await http.MultipartFile.fromPath(
-      'audio',
-      audioFile.path,
-      filename: 'audio.wav',
-    ));
+    if (audio.bytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'audio',
+        audio.bytes!,
+        filename: audio.filename,
+      ));
+    } else if (audio.file != null) {
+      request.files.add(await http.MultipartFile.fromPath(
+        'audio',
+        audio.file!.path,
+        filename: audio.filename,
+      ));
+    }
     request.fields['history'] = jsonEncode(history);
     request.fields['turn_index'] = turnIndex.toString();
 
