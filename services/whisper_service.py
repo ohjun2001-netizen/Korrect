@@ -73,7 +73,6 @@ def _transcribe_openai_api(audio_bytes: bytes, filename: str) -> dict:
 
 # ── Google Cloud STT ──────────────────────────────────────────────────
 def _transcribe_google(audio_bytes: bytes) -> dict:
-    import os
     from google.cloud import speech
 
     if settings.google_credentials_path:
@@ -109,9 +108,6 @@ def compare_stt_modes(audio_bytes: bytes) -> dict:
     """
     results = {}
 
-    original_mode = settings.whisper_mode
-
-    settings.whisper_mode = "local"
     try:
         results["local"] = _transcribe_local(audio_bytes)
     except Exception as e:
@@ -123,5 +119,4 @@ def compare_stt_modes(audio_bytes: bytes) -> dict:
         except Exception as e:
             results["api"] = {"error": str(e)}
 
-    settings.whisper_mode = original_mode
     return results

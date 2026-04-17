@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from models.schemas import ProcessResponse, STTResponse, ChatResponse
+from models.schemas import ProcessResponse, STTResponse, ChatResponse, ProsodyResponse
 from services import whisper_service, prosody_service, gemini_service, scoring_service
 
 router = APIRouter(prefix="/scenario", tags=["Scenario"])
@@ -72,13 +72,11 @@ async def process_turn(
     if ref_path.exists():
         ref_bytes = ref_path.read_bytes()
         prosody_result = prosody_service.analyze(audio_bytes, ref_bytes)
-        from models.schemas import ProsodyResponse
         prosody = ProsodyResponse(**prosody_result)
         total_score = scoring_service.compute_total_score(prosody.score, None)
     else:
         # 레퍼런스 없을 때: 러시아어 억양 패턴만 분석해서 피드백 제공
         accent_result = prosody_service.analyze_with_feedback(audio_bytes)
-        from models.schemas import ProsodyResponse
         if accent_result["pitch_contour"]:
             prosody = ProsodyResponse(
                 pitch_contour=accent_result["pitch_contour"],
