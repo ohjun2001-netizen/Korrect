@@ -14,6 +14,7 @@ librosa==0.10.2
 numpy==1.26.4
 scipy==1.13.0
 fastdtw==0.3.4
+praat-parselmouth==0.4.3
 
 # AI chat
 google-generativeai==0.5.4

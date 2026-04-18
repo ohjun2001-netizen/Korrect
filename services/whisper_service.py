@@ -32,6 +32,8 @@ def transcribe(audio_bytes: bytes, filename: str = "audio.wav") -> dict:
         return _transcribe_openai_api(audio_bytes, filename)
     elif mode == "google":
         return _transcribe_google(audio_bytes)
+    elif mode == "groq":
+        return _transcribe_groq(audio_bytes, filename)
     else:
         return _transcribe_local(audio_bytes)
 
@@ -69,6 +71,28 @@ def _transcribe_openai_api(audio_bytes: bytes, filename: str) -> dict:
 
     transcript = client.audio.transcriptions.create(
         model="whisper-1",
+        file=audio_file,
+        language="ko",
+    )
+    return {
+        "text": transcript.text.strip(),
+        "language": "ko",
+    }
+
+
+# ── Groq Whisper API (무료, OpenAI SDK 호환) ──────────────────────────
+def _transcribe_groq(audio_bytes: bytes, filename: str) -> dict:
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=settings.groq_api_key,
+        base_url="https://api.groq.com/openai/v1",
+    )
+    audio_file = io.BytesIO(audio_bytes)
+    audio_file.name = filename
+
+    transcript = client.audio.transcriptions.create(
+        model="whisper-large-v3-turbo",
         file=audio_file,
         language="ko",
     )

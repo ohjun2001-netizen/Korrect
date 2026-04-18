@@ -4,8 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    groq_api_key: str = ""
 
-    # STT 모드: "local" | "api" (OpenAI) | "google"
+    # STT 모드: "local" | "api" (OpenAI) | "google" | "groq"
     whisper_mode: str = "local"
     # local 모드 모델 크기: tiny, base, small, medium, large
     whisper_model_size: str = "small"

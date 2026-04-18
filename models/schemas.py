@@ -10,10 +10,15 @@ class STTResponse(BaseModel):
 
 # ── 운율 분석 ─────────────────────────────────────────────────────────
 class ProsodyResponse(BaseModel):
-    pitch_contour: list[float]     # 사용자 피치 곡선 (Hz)
-    ref_pitch_contour: list[float] # 원어민 레퍼런스 피치 곡선 (Hz)
-    score: float                   # 유사도 점수 0~100
-    dtw_distance: float            # DTW 거리 (낮을수록 좋음)
+    pitch_contour: list[float]                  # 사용자 피치 곡선 (Hz, librosa)
+    ref_pitch_contour: list[float]              # 원어민 피치 곡선 (Hz, librosa)
+    score: float                                # 피치 DTW 점수 0~100
+    dtw_distance: float                         # 피치 DTW 거리 (낮을수록 좋음)
+    pitch_score_praat: Optional[float] = None   # Praat 기반 피치 점수 (교차검증)
+    rhythm_score: Optional[float] = None        # 리듬(onset 간격) DTW 점수
+    stress_score: Optional[float] = None        # 강세(RMS 에너지) DTW 점수
+    mfcc_cosine_score: Optional[float] = None   # 음색(MFCC) cosine 유사도 점수
+    composite_score: Optional[float] = None     # 네 지표 평균
 
 
 # ── AI 대화 ───────────────────────────────────────────────────────────
