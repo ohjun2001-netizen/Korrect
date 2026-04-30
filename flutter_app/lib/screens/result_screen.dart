@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../models/scenario_model.dart';
+import '../services/progress_service.dart';
 import 'home_screen.dart';
 
 class ResultScreen extends StatelessWidget {
@@ -19,7 +20,18 @@ class ResultScreen extends StatelessWidget {
     this.rhythmScore,
     this.stressScore,
     this.mfccScore,
-  });
+  }) {
+    ProgressService.saveSession(SessionRecord(
+      scenarioId: scenario.id,
+      scenarioTitle: scenario.title,
+      totalScore: totalScore,
+      rhythmScore: rhythmScore,
+      stressScore: stressScore,
+      mfccScore: mfccScore,
+      turnCount: turnCount,
+      date: DateTime.now(),
+    ));
+  }
 
   String get _emoji {
     if (totalScore == null) return '🎉';
