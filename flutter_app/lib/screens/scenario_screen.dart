@@ -125,10 +125,9 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   void _handleResult(ProcessResult result) {
     // 사용자 발화 추가
     setState(() {
-      final hasRef = result.prosody != null &&
-          result.prosody!.refPitchContour.isNotEmpty;
-      final refAudioUrl = hasRef
-          ? '${AppConstants.baseUrl}/api/scenario/${widget.scenario.id}/reference/$_turnIndex'
+      final sttText = result.stt.text.trim();
+      final refAudioUrl = sttText.isNotEmpty
+          ? '${AppConstants.baseUrl}/api/tts?text=${Uri.encodeComponent(sttText)}'
           : null;
 
       _messages.add(_ChatMessage(

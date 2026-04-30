@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from routers import stt, prosody, chat, scenario
+from routers import stt, prosody, chat, scenario, tts_router
 
 app = FastAPI(
     title="Korrect API",
@@ -32,6 +32,7 @@ app.include_router(stt.router, prefix="/api")
 app.include_router(prosody.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(scenario.router, prefix="/api")
+app.include_router(tts_router.router, prefix="/api")
 
 
 @app.get("/")
