@@ -142,24 +142,9 @@ def chat(scenario: str, user_text: str, history: list[dict], prosody_feedback: s
     if prosody_feedback:
         message = f"[발음 피드백: {prosody_feedback}]\n{user_text}"
 
-    import time
-    reply_text = None
-    for attempt in range(3):
-        try:
-            chat_session = model.start_chat(history=_build_history(history))
-            response = chat_session.send_message(message)
-            reply_text = response.text.strip()
-            break
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
-                    continue
-                reply_text = "잠깐! AI가 잠시 쉬고 있어요. 조금 뒤에 다시 말해줄래요? 😊"
-                break
-            else:
-                raise
+    chat_session = model.start_chat(history=_build_history(history))
+    response = chat_session.send_message(message)
+    reply_text = response.text.strip()
     return {
         "reply": reply_text,
         "hint": _extract_hint(reply_text),
