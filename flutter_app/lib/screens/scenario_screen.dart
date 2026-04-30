@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import '../utils/ref_player.dart';
 import '../constants.dart';
 import '../models/scenario_model.dart';
 import '../models/process_result.dart';
@@ -338,7 +338,7 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _showPitch = false;
-  AudioPlayer? _player;
+  RefPlayer? _player;
   bool _isPlaying = false;
 
   @override
@@ -352,13 +352,18 @@ class _MessageBubbleState extends State<_MessageBubble> {
     if (_isPlaying) {
       await _player?.stop();
       setState(() => _isPlaying = false);
-    } else {
-      _player ??= AudioPlayer();
-      _player!.onPlayerComplete.listen((_) {
-        if (mounted) setState(() => _isPlaying = false);
-      });
-      await _player!.play(UrlSource(url));
+      return;
+    }
+    _player ??= RefPlayer();
+    try {
+      await _player!.play(url);
       setState(() => _isPlaying = true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('재생 오류: $e')),
+        );
+      }
     }
   }
 
