@@ -17,12 +17,22 @@ class ProsodyResult {
   final List<double> refPitchContour;
   final double score;
   final double dtwDistance;
+  final double? rhythmScore;
+  final double? stressScore;
+  final double? mfccCosineScore;
+  final double? compositeScore;
+  final double? accentScore;
 
   ProsodyResult({
     required this.pitchContour,
     required this.refPitchContour,
     required this.score,
     required this.dtwDistance,
+    this.rhythmScore,
+    this.stressScore,
+    this.mfccCosineScore,
+    this.compositeScore,
+    this.accentScore,
   });
 
   factory ProsodyResult.fromJson(Map<String, dynamic> json) {
@@ -35,6 +45,21 @@ class ProsodyResult {
           .toList(),
       score: (json['score'] as num).toDouble(),
       dtwDistance: (json['dtw_distance'] as num).toDouble(),
+      rhythmScore: json['rhythm_score'] != null
+          ? (json['rhythm_score'] as num).toDouble()
+          : null,
+      stressScore: json['stress_score'] != null
+          ? (json['stress_score'] as num).toDouble()
+          : null,
+      mfccCosineScore: json['mfcc_cosine_score'] != null
+          ? (json['mfcc_cosine_score'] as num).toDouble()
+          : null,
+      compositeScore: json['composite_score'] != null
+          ? (json['composite_score'] as num).toDouble()
+          : null,
+      accentScore: json['accent_score'] != null
+          ? (json['accent_score'] as num).toDouble()
+          : null,
     );
   }
 }
@@ -58,12 +83,14 @@ class ProcessResult {
   final ProsodyResult? prosody;
   final ChatResult chat;
   final double? totalScore;
+  final String? prosodyFeedback;
 
   ProcessResult({
     required this.stt,
     this.prosody,
     required this.chat,
     this.totalScore,
+    this.prosodyFeedback,
   });
 
   factory ProcessResult.fromJson(Map<String, dynamic> json) {
@@ -76,6 +103,7 @@ class ProcessResult {
       totalScore: json['total_score'] != null
           ? (json['total_score'] as num).toDouble()
           : null,
+      prosodyFeedback: json['prosody_feedback'] as String?,
     );
   }
 }

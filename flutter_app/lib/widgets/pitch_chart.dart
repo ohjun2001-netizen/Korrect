@@ -12,12 +12,15 @@ class PitchChart extends StatelessWidget {
   });
 
   List<FlSpot> _toSpots(List<double> pitchList) {
-    // 0인 값(무성음) 제외하고 샘플링 (최대 100 포인트)
+    if (pitchList.isEmpty) return [];
     final voiced = <FlSpot>[];
-    final step = pitchList.length > 100 ? pitchList.length ~/ 100 : 1;
-    for (int i = 0; i < pitchList.length; i += step) {
+    final total = pitchList.length;
+    final step = total > 100 ? total ~/ 100 : 1;
+    for (int i = 0; i < total; i += step) {
       if (pitchList[i] > 0) {
-        voiced.add(FlSpot(i.toDouble(), pitchList[i]));
+        // x축을 0~100으로 정규화해서 길이가 달라도 같은 위치에 겹치게
+        final x = i / (total - 1) * 100;
+        voiced.add(FlSpot(x, pitchList[i]));
       }
     }
     return voiced;

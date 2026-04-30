@@ -125,6 +125,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         isAi: false,
         prosody: result.prosody,
         score: result.totalScore,
+        prosodyFeedback: result.prosodyFeedback,
       ));
     });
 
@@ -286,6 +287,7 @@ class _ChatMessage {
   final String? hint;
   final ProsodyResult? prosody;
   final double? score;
+  final String? prosodyFeedback;
 
   _ChatMessage({
     required this.text,
@@ -293,6 +295,7 @@ class _ChatMessage {
     this.hint,
     this.prosody,
     this.score,
+    this.prosodyFeedback,
   });
 }
 
@@ -393,7 +396,35 @@ class _MessageBubbleState extends State<_MessageBubble> {
               ),
             ),
 
-          // 피치 그래프 토글 (사용자 발화 + 피치 데이터 있을 때)
+          // 발음 피드백 카드 (사용자 발화에만)
+          if (!isAi && widget.message.prosodyFeedback != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🗣️ ', style: TextStyle(fontSize: 13)),
+                  Flexible(
+                    child: Text(
+                      widget.message.prosodyFeedback!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // 억양 분석 토글 (사용자 발화 + 피치 데이터 있을 때)
           if (!isAi && widget.message.prosody != null) ...[
             const SizedBox(height: 4),
             Align(
@@ -405,7 +436,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   size: 16,
                 ),
                 label: Text(
-                  _showPitch ? '그래프 닫기' : '억양 그래프 보기',
+                  _showPitch ? '분석 닫기' : '발음 분석 보기',
                   style: const TextStyle(fontSize: 12),
                 ),
                 style: TextButton.styleFrom(
@@ -428,9 +459,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     ),
                   ],
                 ),
-                child: PitchChart(
-                  userPitch: widget.message.prosody!.pitchContour,
-                  refPitch: widget.message.prosody!.refPitchContour,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ScoreBreakdown(prosody: widget.message.prosody!),
+                    const SizedBox(height: 12),
+                    PitchChart(
+                      userPitch: widget.message.prosody!.pitchContour,
+                      refPitch: widget.message.prosody!.refPitchContour,
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -466,6 +504,86 @@ class _ScoreBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
+      ),
+    );
+  }
+}
+
+class _ScoreBreakdown extends StatelessWidget {
+  final ProsodyResult prosody;
+
+  const _ScoreBreakdown({required this.prosody});
+
+  @override
+  Widget build(BuildContext context) {
+    // Only show when comparison with reference audio was done
+    if (prosody.compositeScore == null) return const SizedBox.shrink();
+
+    final items = <MapEntry<String, double>>[
+      MapEntry('억양', prosody.score),
+      if (prosody.rhythmScore != null) MapEntry('리듬', prosody.rhythmScore!),
+      if (prosody.stressScore != null) MapEntry('강세', prosody.stressScore!),
+      if (prosody.mfccCosineScore != null) MapEntry('음색', prosody.mfccCosineScore!),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '점수 세부',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+        ),
+        const SizedBox(height: 6),
+        ...items.map((e) => _ScoreBar(label: e.key, score: e.value)),
+      ],
+    );
+  }
+}
+
+class _ScoreBar extends StatelessWidget {
+  final String label;
+  final double score;
+
+  const _ScoreBar({required this.label, required this.score});
+
+  Color get _barColor {
+    if (score >= 80) return Colors.green;
+    if (score >= 60) return Colors.orange;
+    return Colors.redAccent;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: score / 100,
+                minHeight: 8,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation(_barColor),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '${score.toInt()}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
       ),
     );
   }

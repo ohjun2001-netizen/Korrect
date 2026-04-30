@@ -20,6 +20,11 @@ SYSTEM_PROMPTS = {
    예) **힌트:** "어제부터 아팠어요."
 5. 항상 따뜻하고 칭찬하는 말투로 대화해.
 
+[발음 피드백 처리]
+사용자 메시지 앞에 [발음 피드백: ...] 태그가 있으면, 그 내용을 바탕으로
+답변 첫 문장에 발음 격려를 짧게 한 마디 덧붙여줘 (한 문장 이내).
+예) [발음 피드백: 억양이 조금 평탄해요] → "목소리 높낮이를 조금 더 살려봐요!"
+
 [주제 잠금 — 매우 중요]
 - 이 대화의 주제는 오직 '병원 방문'이다. 증상·진료·접수와 관련된 이야기만 한다.
 - 아이가 병원과 무관한 주제(학교, 게임, 음식, 친구 등)로 이탈하면
@@ -43,6 +48,11 @@ SYSTEM_PROMPTS = {
 4. 매 답변 마지막에 아이가 다음에 할 말을 **힌트:** 로 안내해줘.
 5. 항상 따뜻하고 칭찬하는 말투로 대화해.
 
+[발음 피드백 처리]
+사용자 메시지 앞에 [발음 피드백: ...] 태그가 있으면, 그 내용을 바탕으로
+답변 첫 문장에 발음 격려를 짧게 한 마디 덧붙여줘 (한 문장 이내).
+예) [발음 피드백: 억양이 조금 평탄해요] → "목소리 높낮이를 조금 더 살려봐요!"
+
 [주제 잠금 — 매우 중요]
 - 이 대화의 주제는 오직 '은행 업무'다. 환전·입출금·계좌·카드 관련 이야기만 한다.
 - 아이가 은행과 무관한 주제(학교, 게임, 음식, 친구 등)로 이탈하면
@@ -65,6 +75,11 @@ SYSTEM_PROMPTS = {
 3. 아이가 틀린 표현을 쓰면 자연스럽게 올바른 표현을 알려줘.
 4. 매 답변 마지막에 아이가 다음에 할 말을 **힌트:** 로 안내해줘.
 5. 항상 따뜻하고 칭찬하는 말투로 대화해.
+
+[발음 피드백 처리]
+사용자 메시지 앞에 [발음 피드백: ...] 태그가 있으면, 그 내용을 바탕으로
+답변 첫 문장에 발음 격려를 짧게 한 마디 덧붙여줘 (한 문장 이내).
+예) [발음 피드백: 억양이 조금 평탄해요] → "목소리 높낮이를 조금 더 살려봐요!"
 
 [주제 잠금 — 매우 중요]
 - 이 대화의 주제는 오직 '출입국 방문'이다. 비자·체류·서류 관련 이야기만 한다.
@@ -109,7 +124,7 @@ def _extract_hint(reply_text: str) -> str | None:
     return None
 
 
-def chat(scenario: str, user_text: str, history: list[dict]) -> dict:
+def chat(scenario: str, user_text: str, history: list[dict], prosody_feedback: str | None = None) -> dict:
     """
     Gemini API로 시나리오 기반 대화 응답 생성.
     반환값: {"reply": str, "hint": str | None}
@@ -123,8 +138,12 @@ def chat(scenario: str, user_text: str, history: list[dict]) -> dict:
         system_instruction=system_prompt,
     )
 
+    message = user_text
+    if prosody_feedback:
+        message = f"[발음 피드백: {prosody_feedback}]\n{user_text}"
+
     chat_session = model.start_chat(history=_build_history(history))
-    response = chat_session.send_message(user_text)
+    response = chat_session.send_message(message)
     reply_text = response.text.strip()
 
     return {

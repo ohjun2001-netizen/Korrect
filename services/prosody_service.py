@@ -5,10 +5,21 @@ DTW / Cosine 유사도로 원어민 대비 점수를 산출한다.
 """
 import os
 import tempfile
+from pathlib import Path
 import numpy as np
 import librosa
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean, cosine
+
+# ── 러시아 억양 프로필 로드 ────────────────────────────────────────────
+_RUSSIAN_PROFILE_PATH = Path(__file__).parent.parent / "data" / "russian_accent_profile.npy"
+_russian_profile: np.ndarray | None = None
+
+def _get_russian_profile() -> np.ndarray | None:
+    global _russian_profile
+    if _russian_profile is None and _RUSSIAN_PROFILE_PATH.exists():
+        _russian_profile = np.load(_RUSSIAN_PROFILE_PATH)
+    return _russian_profile
 
 # Praat bindings (선택적 의존성)
 try:
@@ -35,11 +46,23 @@ DTW_STRESS_MAX = 0.1     # RMS amplitude
 
 
 # ── 내부 유틸 ─────────────────────────────────────────────────────────
-def _with_tempfile(audio_bytes: bytes):
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp.write(audio_bytes)
-    tmp.close()
-    return tmp.name
+def _with_tempfile(audio_bytes: bytes) -> str:
+    """오디오 바이트를 실제 WAV(16kHz mono)로 변환해 임시 파일로 저장."""
+    from pydub import AudioSegment
+    import io
+    try:
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        audio = audio.set_frame_rate(16000).set_channels(1)
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        audio.export(tmp.name, format="wav")
+        tmp.close()
+        return tmp.name
+    except Exception:
+        # 변환 실패 시 원본 바이트를 그대로 저장
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp.write(audio_bytes)
+        tmp.close()
+        return tmp.name
 
 
 # ── 피처 추출 ─────────────────────────────────────────────────────────
@@ -67,6 +90,8 @@ def extract_pitch_praat(audio_bytes: bytes) -> np.ndarray:
         pitch = sound.to_pitch(pitch_floor=FMIN, pitch_ceiling=FMAX)
         values = pitch.selected_array['frequency']
         return np.nan_to_num(values, nan=0.0)
+    except Exception:
+        return np.array([])
     finally:
         os.unlink(tmp_path)
 
@@ -175,6 +200,25 @@ def compute_mfcc_cosine(user_mfcc: np.ndarray, ref_mfcc: np.ndarray) -> dict:
     return {"score": round(score, 1), "cosine_distance": round(dist, 4)}
 
 
+def compute_two_sided_accent_score(user_mfcc: np.ndarray, native_mfcc: np.ndarray) -> float | None:
+    """
+    원어민 MFCC와 러시아 억양 프로필 MFCC 사이에서 사용자 위치를 0~100으로 환산.
+    100 = 원어민에 가까움, 0 = 러시아 억양에 가까움.
+    러시아 프로필이 없으면 None 반환.
+    """
+    russian_profile = _get_russian_profile()
+    if russian_profile is None or len(user_mfcc) == 0 or len(native_mfcc) == 0:
+        return None
+
+    d_native = float(cosine(user_mfcc, native_mfcc))
+    d_russian = float(cosine(user_mfcc, russian_profile))
+    total = d_native + d_russian
+    if total == 0:
+        return 50.0
+    score = (d_russian / total) * 100.0
+    return round(score, 1)
+
+
 # ── 통합 분석 ─────────────────────────────────────────────────────────
 def analyze(user_audio_bytes: bytes, ref_audio_bytes: bytes) -> dict:
     """
@@ -208,6 +252,8 @@ def analyze(user_audio_bytes: bytes, ref_audio_bytes: bytes) -> dict:
         1,
     )
 
+    accent_score = compute_two_sided_accent_score(user_mfcc, ref_mfcc)
+
     return {
         "pitch_contour": user_pitch.tolist(),
         "ref_pitch_contour": ref_pitch.tolist(),
@@ -218,6 +264,7 @@ def analyze(user_audio_bytes: bytes, ref_audio_bytes: bytes) -> dict:
         "stress_score": stress_result["score"],
         "mfcc_cosine_score": mfcc_result["score"],
         "composite_score": composite,
+        "accent_score": accent_score,
     }
 
 
@@ -242,6 +289,7 @@ def analyze_with_feedback(user_audio_bytes: bytes, ref_audio_bytes: bytes = None
         "stress_score": None,
         "mfcc_cosine_score": None,
         "composite_score": None,
+        "accent_score": None,
     }
 
     if ref_audio_bytes:
@@ -249,7 +297,7 @@ def analyze_with_feedback(user_audio_bytes: bytes, ref_audio_bytes: bytes = None
         for key in (
             "score", "dtw_distance", "ref_pitch_contour",
             "pitch_score_praat", "rhythm_score", "stress_score",
-            "mfcc_cosine_score", "composite_score",
+            "mfcc_cosine_score", "composite_score", "accent_score",
         ):
             result[key] = full[key]
 

@@ -64,26 +64,33 @@ async def process_turn(
     stt_result = whisper_service.transcribe(audio_bytes, audio.filename or "audio.wav")
     stt = STTResponse(text=stt_result["text"], language=stt_result["language"])
 
-    # 2. 운율 분석 (레퍼런스 파일이 있을 때만)
+    # 2. 운율 분석 + 피드백 텍스트
     prosody = None
     total_score = None
+    feedback_text = None
     ref_path = REF_DIR / scenario_id / f"{turn_index}.wav"
 
-    if ref_path.exists():
-        ref_bytes = ref_path.read_bytes()
-        prosody_result = prosody_service.analyze(audio_bytes, ref_bytes)
-        prosody = ProsodyResponse(**prosody_result)
-        total_score = scoring_service.compute_total_score(prosody.score, None)
-    else:
-        # 레퍼런스 없을 때: 러시아어 억양 패턴만 분석해서 피드백 제공
-        accent_result = prosody_service.analyze_with_feedback(audio_bytes)
-        if accent_result["pitch_contour"]:
-            prosody = ProsodyResponse(
-                pitch_contour=accent_result["pitch_contour"],
-                ref_pitch_contour=[],
-                score=0.0,
-                dtw_distance=0.0,
-            )
+    ref_bytes = ref_path.read_bytes() if ref_path.exists() else None
+    prosody_result = prosody_service.analyze_with_feedback(audio_bytes, ref_bytes)
+    feedback_text = prosody_result.get("feedback")
+
+    if prosody_result.get("pitch_contour"):
+        score_val = prosody_result.get("score") or 0.0
+        dtw_val = prosody_result.get("dtw_distance") or 0.0
+        prosody = ProsodyResponse(
+            pitch_contour=prosody_result["pitch_contour"],
+            ref_pitch_contour=prosody_result.get("ref_pitch_contour") or [],
+            score=score_val,
+            dtw_distance=dtw_val,
+            pitch_score_praat=prosody_result.get("pitch_score_praat"),
+            rhythm_score=prosody_result.get("rhythm_score"),
+            stress_score=prosody_result.get("stress_score"),
+            mfcc_cosine_score=prosody_result.get("mfcc_cosine_score"),
+            composite_score=prosody_result.get("composite_score"),
+            accent_score=prosody_result.get("accent_score"),
+        )
+        if prosody_result.get("score") is not None:
+            total_score = scoring_service.compute_total_score(prosody.score, None)
 
     # 3. AI 대화
     if not stt.text.strip():
@@ -97,6 +104,7 @@ async def process_turn(
             scenario=scenario_id,
             user_text=stt.text,
             history=history_data,
+            prosody_feedback=feedback_text,
         )
         chat = ChatResponse(**chat_result)
 
@@ -105,4 +113,5 @@ async def process_turn(
         prosody=prosody,
         chat=chat,
         total_score=total_score,
+        prosody_feedback=feedback_text,
     )

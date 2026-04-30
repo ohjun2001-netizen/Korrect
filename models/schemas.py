@@ -19,6 +19,7 @@ class ProsodyResponse(BaseModel):
     stress_score: Optional[float] = None        # 강세(RMS 에너지) DTW 점수
     mfcc_cosine_score: Optional[float] = None   # 음색(MFCC) cosine 유사도 점수
     composite_score: Optional[float] = None     # 네 지표 평균
+    accent_score: Optional[float] = None        # 억양 점수: 원어민↔러시아 억양 사이 위치 (100=원어민)
 
 
 # ── AI 대화 ───────────────────────────────────────────────────────────
@@ -39,3 +40,4 @@ class ProcessResponse(BaseModel):
     prosody: Optional[ProsodyResponse] = None  # 레퍼런스 없으면 None
     chat: ChatResponse
     total_score: Optional[float] = None        # 종합 점수 0~100
+    prosody_feedback: Optional[str] = None     # 억양 피드백 텍스트
