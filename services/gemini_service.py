@@ -134,7 +134,7 @@ def chat(scenario: str, user_text: str, history: list[dict], prosody_feedback: s
     system_prompt = SYSTEM_PROMPTS.get(scenario, DEFAULT_SYSTEM_PROMPT)
 
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite",
+        model_name="gemini-1.5-flash",
         system_instruction=system_prompt,
     )
 
@@ -142,10 +142,16 @@ def chat(scenario: str, user_text: str, history: list[dict], prosody_feedback: s
     if prosody_feedback:
         message = f"[발음 피드백: {prosody_feedback}]\n{user_text}"
 
-    chat_session = model.start_chat(history=_build_history(history))
-    response = chat_session.send_message(message)
-    reply_text = response.text.strip()
-
+    try:
+        chat_session = model.start_chat(history=_build_history(history))
+        response = chat_session.send_message(message)
+        reply_text = response.text.strip()
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+            reply_text = "잠깐! AI가 잠시 쉬고 있어요. 조금 뒤에 다시 말해줄래요? 😊"
+        else:
+            raise
     return {
         "reply": reply_text,
         "hint": _extract_hint(reply_text),
