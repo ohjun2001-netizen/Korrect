@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../constants.dart';
 import '../models/scenario_model.dart';
 import '../models/process_result.dart';
@@ -124,12 +125,19 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   void _handleResult(ProcessResult result) {
     // 사용자 발화 추가
     setState(() {
+      final hasRef = result.prosody != null &&
+          result.prosody!.refPitchContour.isNotEmpty;
+      final refAudioUrl = hasRef
+          ? '${AppConstants.baseUrl}/api/scenario/${widget.scenario.id}/reference/$_turnIndex'
+          : null;
+
       _messages.add(_ChatMessage(
         text: result.stt.text.isEmpty ? '(알아듣지 못했어요)' : result.stt.text,
         isAi: false,
         prosody: result.prosody,
         score: result.totalScore,
         prosodyFeedback: result.prosodyFeedback,
+        refAudioUrl: refAudioUrl,
       ));
     });
 
@@ -305,6 +313,7 @@ class _ChatMessage {
   final ProsodyResult? prosody;
   final double? score;
   final String? prosodyFeedback;
+  final String? refAudioUrl;
 
   _ChatMessage({
     required this.text,
@@ -313,6 +322,7 @@ class _ChatMessage {
     this.prosody,
     this.score,
     this.prosodyFeedback,
+    this.refAudioUrl,
   });
 }
 
@@ -328,6 +338,29 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _showPitch = false;
+  AudioPlayer? _player;
+  bool _isPlaying = false;
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    final url = widget.message.refAudioUrl!;
+    if (_isPlaying) {
+      await _player?.stop();
+      setState(() => _isPlaying = false);
+    } else {
+      _player ??= AudioPlayer();
+      _player!.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _isPlaying = false);
+      });
+      await _player!.play(UrlSource(url));
+      setState(() => _isPlaying = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -437,6 +470,30 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+
+          // 원어민 발음 듣기 버튼
+          if (!isAi && widget.message.refAudioUrl != null) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _togglePlay,
+                icon: Icon(
+                  _isPlaying ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
+                  size: 16,
+                  color: Colors.deepPurple,
+                ),
+                label: Text(
+                  _isPlaying ? '멈추기' : '원어민 발음 듣기',
+                  style: const TextStyle(fontSize: 12, color: Colors.deepPurple),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                ),
               ),
             ),
           ],

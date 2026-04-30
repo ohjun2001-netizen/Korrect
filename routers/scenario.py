@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from models.schemas import ProcessResponse, STTResponse, ChatResponse, ProsodyResponse
 from services import whisper_service, prosody_service, gemini_service, scoring_service
 
@@ -33,6 +34,15 @@ async def get_scenario(scenario_id: str):
         raise HTTPException(status_code=404, detail=f"시나리오를 찾을 수 없습니다: {scenario_id}")
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+@router.get("/{scenario_id}/reference/{turn_index}")
+async def get_reference_audio(scenario_id: str, turn_index: int):
+    """레퍼런스(원어민) 오디오 파일 반환."""
+    ref_path = REF_DIR / scenario_id / f"{turn_index}.wav"
+    if not ref_path.exists():
+        raise HTTPException(status_code=404, detail="레퍼런스 파일이 없습니다.")
+    return FileResponse(ref_path, media_type="audio/wav")
 
 
 @router.get("/{scenario_id}/opening")
