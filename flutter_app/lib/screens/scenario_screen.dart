@@ -27,6 +27,10 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   int _turnIndex = 0;
   double _totalScore = 0;
   int _scoreCount = 0;
+  double _rhythmTotal = 0;
+  double _stressTotal = 0;
+  double _mfccTotal = 0;
+  int _subScoreCount = 0;
 
   static const int _maxTurns = 5;
 
@@ -134,6 +138,13 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
       _totalScore += result.totalScore!;
       _scoreCount++;
     }
+    final p = result.prosody;
+    if (p != null && p.rhythmScore != null && p.stressScore != null && p.mfccCosineScore != null) {
+      _rhythmTotal += p.rhythmScore!;
+      _stressTotal += p.stressScore!;
+      _mfccTotal += p.mfccCosineScore!;
+      _subScoreCount++;
+    }
 
     // 히스토리 업데이트
     _history.add({'role': 'user', 'text': result.stt.text});
@@ -155,6 +166,9 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
     if (_turnIndex >= _maxTurns) {
       Future.delayed(const Duration(milliseconds: 800), () {
         final avgScore = _scoreCount > 0 ? _totalScore / _scoreCount : null;
+        final avgRhythm = _subScoreCount > 0 ? _rhythmTotal / _subScoreCount : null;
+        final avgStress = _subScoreCount > 0 ? _stressTotal / _subScoreCount : null;
+        final avgMfcc = _subScoreCount > 0 ? _mfccTotal / _subScoreCount : null;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -162,6 +176,9 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
               scenario: widget.scenario,
               totalScore: avgScore,
               turnCount: _turnIndex,
+              rhythmScore: avgRhythm,
+              stressScore: avgStress,
+              mfccScore: avgMfcc,
             ),
           ),
         );
