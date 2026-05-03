@@ -70,7 +70,7 @@ class ApiService {
     request.fields['turn_index'] = turnIndex.toString();
 
     final streamedResponse = await request.send()
-        .timeout(const Duration(seconds: 30));
+        .timeout(const Duration(seconds: 90));
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 200) {

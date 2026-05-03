@@ -14,5 +14,8 @@ class AppConstants {
     'hospital': '🏥',
     'bank': '🏦',
     'immigration': '🛂',
+    'school': '🏫',
+    'restaurant': '🍽️',
+    'mart': '🛒',
   };
 }

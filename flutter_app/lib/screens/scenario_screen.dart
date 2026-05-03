@@ -26,6 +26,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   bool _isRecording = false;
   bool _isLoading = false;
   int _turnIndex = 0;
+  DateTime? _recordingStartTime;
   double _totalScore = 0;
   int _scoreCount = 0;
   double _rhythmTotal = 0;
@@ -33,7 +34,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   double _mfccTotal = 0;
   int _subScoreCount = 0;
 
-  static const int _maxTurns = 5;
+  static const int _maxTurns = 4;
 
   @override
   void initState() {
@@ -85,13 +86,22 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         return;
       }
       await AudioService.startRecording();
-      setState(() => _isRecording = true);
+      setState(() {
+        _isRecording = true;
+        _recordingStartTime = DateTime.now();
+      });
     } catch (e) {
       _showSnackBar('녹음 시작 실패: $e');
     }
   }
 
   Future<void> _stopAndProcess() async {
+    if (_recordingStartTime != null &&
+        DateTime.now().difference(_recordingStartTime!).inMilliseconds < 1000) {
+      _showSnackBar('조금 더 길게 말해봐요! (1초 이상)');
+      return;
+    }
+
     setState(() {
       _isRecording = false;
       _isLoading = true;
@@ -137,6 +147,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         score: result.totalScore,
         prosodyFeedback: result.prosodyFeedback,
         refAudioUrl: refAudioUrl,
+        words: result.stt.words,
       ));
     });
 
@@ -162,6 +173,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         text: result.chat.reply,
         isAi: true,
         hint: result.chat.hint,
+        hintRu: result.chat.hintRu,
       ));
       _history.add({'role': 'model', 'text': result.chat.reply});
       _turnIndex++;
@@ -215,7 +227,32 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   Widget build(BuildContext context) {
     final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('연습을 그만할까요?'),
+            content: const Text('지금 나가면 현재 연습 기록이 저장되지 않아요.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('계속할게요'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('나갈게요', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(AppConstants.bgColor),
       appBar: AppBar(
         backgroundColor: const Color(AppConstants.primaryColor),
@@ -300,6 +337,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -309,19 +347,23 @@ class _ChatMessage {
   final String text;
   final bool isAi;
   final String? hint;
+  final String? hintRu;
   final ProsodyResult? prosody;
   final double? score;
   final String? prosodyFeedback;
   final String? refAudioUrl;
+  final List<WordScore> words;
 
   _ChatMessage({
     required this.text,
     required this.isAi,
     this.hint,
+    this.hintRu,
     this.prosody,
     this.score,
     this.prosodyFeedback,
     this.refAudioUrl,
+    this.words = const [],
   });
 }
 
@@ -337,6 +379,7 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _showPitch = false;
+  bool _showHintRu = false;
   RefPlayer? _player;
   bool _isPlaying = false;
 
@@ -405,13 +448,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       ),
                     ],
                   ),
-                  child: Text(
-                    widget.message.text,
-                    style: TextStyle(
-                      color: isAi ? Colors.black87 : Colors.white,
-                      fontSize: 15,
-                    ),
-                  ),
+                  child: !isAi && widget.message.words.isNotEmpty
+                      ? _ColoredWordsText(words: widget.message.words)
+                      : Text(
+                          widget.message.text,
+                          style: TextStyle(
+                            color: isAi ? Colors.black87 : Colors.white,
+                            fontSize: 15,
+                          ),
+                        ),
                 ),
               ),
               // 점수 표시 (사용자 발화에만)
@@ -422,30 +467,46 @@ class _MessageBubbleState extends State<_MessageBubble> {
             ],
           ),
 
-          // 힌트 표시 (AI 메시지에만)
+          // 힌트 표시 (AI 메시지에만) — 토글로 한국어/러시아어 전환
           if (isAi && widget.message.hint != null)
             Padding(
               padding: const EdgeInsets.only(left: 40, top: 4),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.amber[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade300),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('💡 ', style: TextStyle(fontSize: 12)),
-                    Text(
-                      '"${widget.message.hint}"',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.amber[900],
-                        fontStyle: FontStyle.italic,
+              child: GestureDetector(
+                onTap: widget.message.hintRu != null
+                    ? () => setState(() => _showHintRu = !_showHintRu)
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('💡 ', style: TextStyle(fontSize: 12)),
+                      Flexible(
+                        child: Text(
+                          _showHintRu && widget.message.hintRu != null
+                              ? '"${widget.message.hintRu}"'
+                              : '"${widget.message.hint}"',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber[900],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                      if (widget.message.hintRu != null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          _showHintRu ? '🇰🇷' : '🇷🇺',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -545,6 +606,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     PitchChart(
                       userPitch: widget.message.prosody!.pitchContour,
                       refPitch: widget.message.prosody!.refPitchContour,
+                      refAudioUrl: widget.message.refAudioUrl,
                     ),
                   ],
                 ),
@@ -602,7 +664,16 @@ class _ScoreBreakdown extends StatelessWidget {
       if (prosody.rhythmScore != null) MapEntry('리듬', prosody.rhythmScore!),
       if (prosody.stressScore != null) MapEntry('강세', prosody.stressScore!),
       if (prosody.mfccCosineScore != null) MapEntry('음색', prosody.mfccCosineScore!),
+      if (prosody.formantScore != null) MapEntry('모음', prosody.formantScore!),
+      if (prosody.syllableScore != null) MapEntry('음절', prosody.syllableScore!),
+      if (prosody.voicedRatioScore != null) MapEntry('발성', prosody.voicedRatioScore!),
+      if (prosody.pitchSlopeScore != null) MapEntry('음조', prosody.pitchSlopeScore!),
     ];
+
+    final hasRhythmDetail = prosody.speechRateUser != null &&
+        prosody.speechRateRef != null &&
+        prosody.pauseCountUser != null &&
+        prosody.pauseCountRef != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,7 +684,119 @@ class _ScoreBreakdown extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         ...items.map((e) => _ScoreBar(label: e.key, score: e.value)),
+        if (hasRhythmDetail) ...[
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          const Text(
+            '리듬 상세',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+          ),
+          const SizedBox(height: 6),
+          _RhythmDetailRow(
+            label: '말하기 속도',
+            userValue: '${prosody.speechRateUser!.toStringAsFixed(1)} 음절/초',
+            refValue: '${prosody.speechRateRef!.toStringAsFixed(1)} 음절/초',
+          ),
+          _RhythmDetailRow(
+            label: '쉬는 횟수',
+            userValue: '${prosody.pauseCountUser}회',
+            refValue: '${prosody.pauseCountRef}회',
+          ),
+          if (prosody.rhythmFeedback != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.purple[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('🎵 ', style: TextStyle(fontSize: 12)),
+                  Flexible(
+                    child: Text(
+                      prosody.rhythmFeedback!,
+                      style: TextStyle(fontSize: 11, color: Colors.purple[900]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ],
+    );
+  }
+}
+
+class _RhythmDetailRow extends StatelessWidget {
+  final String label;
+  final String userValue;
+  final String refValue;
+
+  const _RhythmDetailRow({
+    required this.label,
+    required this.userValue,
+    required this.refValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          ),
+          Expanded(
+            child: Text(
+              '나: $userValue',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Text(
+            '원어민: $refValue',
+            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColoredWordsText extends StatelessWidget {
+  final List<WordScore> words;
+
+  const _ColoredWordsText({required this.words});
+
+  Color _wordColor(double? score) {
+    if (score == null) return Colors.white;
+    if (score >= 70) return Colors.greenAccent[100]!;
+    if (score >= 40) return Colors.amberAccent[100]!;
+    return Colors.redAccent[100]!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+        children: [
+          for (final w in words)
+            TextSpan(
+              text: '${w.word} ',
+              style: TextStyle(
+                color: _wordColor(w.score),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

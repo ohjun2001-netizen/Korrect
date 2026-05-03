@@ -25,7 +25,7 @@ def _get_local_model():
 def transcribe(audio_bytes: bytes, filename: str = "audio.wav") -> dict:
     """
     오디오 바이트를 받아 STT 결과를 반환.
-    반환값: {"text": str, "language": str}
+    반환값: {"text": str, "language": str, "words": list[{"word", "start", "end"}]}
     """
     mode = settings.whisper_mode
     if mode == "api":
@@ -50,12 +50,27 @@ def _transcribe_local(audio_bytes: bytes) -> dict:
             f.write(audio_bytes)
         print(f"[Whisper] 입력 파일 크기: {len(audio_bytes)}B")
         print(f"[Whisper] 디버깅용 복사본: {debug_path}")
-        result = model.transcribe(tmp_path, language="ko")
+        # word_timestamps는 medium 이상에서 추론 시간을 크게 늘림 → 환경변수로 끌 수 있음
+        use_word_ts = os.environ.get("WHISPER_WORD_TIMESTAMPS", "1") == "1"
+        try:
+            result = model.transcribe(tmp_path, language="ko", word_timestamps=use_word_ts)
+        except Exception as e:
+            print(f"[Whisper] word_timestamps 실패, 재시도: {e}")
+            result = model.transcribe(tmp_path, language="ko")
         text = result["text"].strip()
         print(f"[Whisper] 인식 결과: '{text}' (language={result.get('language')})")
+        words: list[dict] = []
+        for seg in result.get("segments", []):
+            for w in seg.get("words", []) or []:
+                words.append({
+                    "word": w.get("word", "").strip(),
+                    "start": float(w.get("start", 0.0)),
+                    "end": float(w.get("end", 0.0)),
+                })
         return {
             "text": text,
             "language": result.get("language", "ko"),
+            "words": words,
         }
     finally:
         os.unlink(tmp_path)
@@ -73,10 +88,13 @@ def _transcribe_openai_api(audio_bytes: bytes, filename: str) -> dict:
         model="whisper-1",
         file=audio_file,
         language="ko",
+        response_format="verbose_json",
+        timestamp_granularities=["word"],
     )
     return {
         "text": transcript.text.strip(),
         "language": "ko",
+        "words": _extract_words(transcript),
     }
 
 
@@ -95,11 +113,27 @@ def _transcribe_groq(audio_bytes: bytes, filename: str) -> dict:
         model="whisper-large-v3-turbo",
         file=audio_file,
         language="ko",
+        response_format="verbose_json",
+        timestamp_granularities=["word"],
     )
     return {
         "text": transcript.text.strip(),
         "language": "ko",
+        "words": _extract_words(transcript),
     }
+
+
+def _extract_words(transcript) -> list[dict]:
+    """OpenAI/Groq verbose_json 응답에서 word 타임스탬프 추출."""
+    words_raw = getattr(transcript, "words", None) or []
+    return [
+        {
+            "word": (getattr(w, "word", "") or "").strip(),
+            "start": float(getattr(w, "start", 0.0)),
+            "end": float(getattr(w, "end", 0.0)),
+        }
+        for w in words_raw
+    ]
 
 
 # ── Google Cloud STT ──────────────────────────────────────────────────
@@ -128,6 +162,7 @@ def _transcribe_google(audio_bytes: bytes) -> dict:
     return {
         "text": text.strip(),
         "language": "ko",
+        "words": [],
     }
 
 

@@ -12,7 +12,7 @@ class ResultScreen extends StatelessWidget {
   final double? stressScore;
   final double? mfccScore;
 
-  const ResultScreen({
+  ResultScreen({
     super.key,
     required this.scenario,
     required this.totalScore,

@@ -4,6 +4,7 @@ import '../models/scenario_model.dart';
 import '../services/api_service.dart';
 import 'scenario_screen.dart';
 import 'progress_screen.dart';
+import 'tutorial_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,6 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline, color: Colors.white),
+            tooltip: '사용법',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const TutorialScreen(isFirstLaunch: false),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.white),
             tooltip: '내 기록',
