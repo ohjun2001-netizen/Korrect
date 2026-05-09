@@ -208,7 +208,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
   void _showHint() {
     if (_lastHint != null) {
-      _showSnackBar('💡 힌트: ${_lastHint}');
+      _showSnackBar('💡 힌트: $_lastHint');
     } else {
       _showSnackBar('💡 아직 힌트가 없어요. 먼저 AI와 대화해보세요!');
     }
@@ -216,9 +216,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
   void _replayReferenceAudio() {
     if (_lastRefAudioUrl != null) {
-      // Play the reference audio using the existing player
       _showSnackBar('🔊 원어민 발음을 재생합니다...');
-      // You can add actual playback logic here if needed
     } else {
       _showSnackBar('🔊 아직 원어민 발음이 없어요. 먼저 말해보세요!');
     }
@@ -246,178 +244,199 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   Widget build(BuildContext context) {
     final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E6), // Warm background
-      appBar: AppBar(
-        title: Text(
-          '$emoji ${widget.scenario.title}',
-          style: const TextStyle(color: Colors.white, fontSize: 20),
-        ),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          // Progress pill with dots (replaces plain text)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('$_turnIndex/$_maxTurns',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(width: 6),
-                Row(
-                  children: List.generate(
-                      _maxTurns,
-                      (i) => Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(left: 3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: i < _turnIndex
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.35),
-                            ),
-                          )),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (!didPop) {
+          final shouldPop = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('연습을 그만할까요?'),
+              content: const Text('지금 나가면 진행 상황이 저장되지 않아요.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('계속 연습'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('나가기'),
                 ),
               ],
             ),
+          );
+          if (shouldPop == true) {
+            Navigator.pop(context);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFFFF9E6),
+        appBar: AppBar(
+          title: Text(
+            '$emoji ${widget.scenario.title}',
+            style: const TextStyle(color: Colors.white, fontSize: 20),
           ),
-          const SizedBox(width: 12),
-        ],
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                const Color(0xFFFF9500), // Orange
-                const Color(0xFFFFC107), // Yellow
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _MessageBubble(message: _messages[index]);
-              },
-            ),
-          ),
-
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
+          centerTitle: true,
+          iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                  Text('$_turnIndex/$_maxTurns',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 6),
+                  Row(
+                    children: List.generate(
+                        _maxTurns,
+                        (i) => Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(left: 3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i < _turnIndex
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.35),
+                              ),
+                            )),
                   ),
-                  SizedBox(width: 8),
-                  Text('처리 중...', style: TextStyle(color: Colors.grey)),
                 ],
               ),
             ),
-
-          // Bottom bar with side buttons flanking the mic
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            const SizedBox(width: 12),
+          ],
+          flexibleSpace: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFFF9500),
+                  const Color(0xFFFFC107),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFE8E0C8), // Solid color shadow
-                  blurRadius: 0,
-                  offset: const Offset(0, -3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                if (_isRecording)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '말하고 있어요... 버튼을 눌러서 멈춰요',
-                      style: TextStyle(color: Colors.red, fontSize: 16),
-                    ),
-                  )
-                else
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '버튼을 눌러서 말해봐요!',
-                      style: TextStyle(color: Color(0xFFFF9500), fontSize: 16),
-                    ),
-                  ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Hint replay button
-                    GestureDetector(
-                      onTap: _showHint,
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFFFFF3CD),
-                          border: Border.all(
-                              color: const Color(0xFFFFD700), width: 2),
-                        ),
-                        child: const Center(
-                            child: Text('💡', style: TextStyle(fontSize: 20))),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    RecordButton(
-                      isRecording: _isRecording,
-                      isLoading: _isLoading,
-                      onTap: _isLoading ? () {} : _toggleRecording,
-                    ),
-                    const SizedBox(width: 16),
-                    // Reference audio replay button
-                    GestureDetector(
-                      onTap: _replayReferenceAudio,
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFFFFF3CD),
-                          border: Border.all(
-                              color: const Color(0xFFFFD700), width: 2),
-                        ),
-                        child: const Center(
-                            child: Text('🔊', style: TextStyle(fontSize: 20))),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
-        ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length,
+                itemBuilder: (context, index) {
+                  return _MessageBubble(message: _messages[index]);
+                },
+              ),
+            ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('처리 중...', style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE8E0C8),
+                    blurRadius: 0,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  if (_isRecording)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '말하고 있어요... 버튼을 눌러서 멈춰요',
+                        style: TextStyle(color: Colors.red, fontSize: 16),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '버튼을 눌러서 말해봐요!',
+                        style: TextStyle(color: Color(0xFFFF9500), fontSize: 16),
+                      ),
+                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _showHint,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFFFF3CD),
+                            border: Border.all(
+                                color: const Color(0xFFFFD700), width: 2),
+                          ),
+                          child: const Center(
+                              child: Text('💡', style: TextStyle(fontSize: 20))),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      RecordButton(
+                        isRecording: _isRecording,
+                        isLoading: _isLoading,
+                        onTap: _isLoading ? () {} : _toggleRecording,
+                      ),
+                      const SizedBox(width: 16),
+                      GestureDetector(
+                        onTap: _replayReferenceAudio,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFFFF3CD),
+                            border: Border.all(
+                                color: const Color(0xFFFFD700), width: 2),
+                          ),
+                          child: const Center(
+                              child: Text('🔊', style: TextStyle(fontSize: 20))),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -514,7 +533,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    // AI bubble now white (pops on cream background)
                     color: isAi ? Colors.white : const Color(0xFFFF9500),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
@@ -679,7 +697,7 @@ class _ScoreBadge extends StatelessWidget {
 
   Color get _color {
     if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.amber; // Amber for 60-79
+    if (score >= 60) return Colors.amber;
     return Colors.red;
   }
 
