@@ -18,6 +18,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   audioplayers: ^6.0.0
   shared_preferences: ^2.5.5
+  confetti: ^0.8.0   # <-- ADDED THIS LINE
 
 dev_dependencies:
   flutter_test:
