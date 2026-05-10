@@ -27,11 +27,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadScenarios() async {
     try {
       final scenarios = await ApiService.getScenarios();
+      if (!mounted) return;
       setState(() {
         _scenarios = scenarios;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = '서버에 연결할 수 없어요.\n서버가 켜져 있는지 확인해주세요.';
         _isLoading = false;
@@ -42,15 +44,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(AppConstants.bgColor),
+      backgroundColor: const Color(0xFFFFF9E6),
       appBar: AppBar(
-        backgroundColor: const Color(AppConstants.primaryColor),
-        title: const Text(
-          'Korrect',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.5),
+              width: 2.5,
+            ),
+            color: Colors.white.withValues(alpha: 0.18),
+          ),
+          child: const Text(
+            'Korrect',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+              shadows: [
+                Shadow(
+                  color: Colors.black26,
+                  offset: Offset(0, 3),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
           ),
         ),
         centerTitle: true,
@@ -74,6 +94,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFFFF9500),
+                Color(0xFFFFC107),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -104,7 +136,7 @@ class _ScenarioList extends StatelessWidget {
           Expanded(
             child: ListView.separated(
               itemCount: scenarios.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
                 return _ScenarioCard(scenario: scenarios[index]);
               },
@@ -116,60 +148,161 @@ class _ScenarioList extends StatelessWidget {
   }
 }
 
-class _ScenarioCard extends StatelessWidget {
+class _ScenarioCard extends StatefulWidget {
   final Scenario scenario;
 
   const _ScenarioCard({required this.scenario});
 
   @override
-  Widget build(BuildContext context) {
-    final emoji = AppConstants.scenarioEmoji[scenario.id] ?? '💬';
+  State<_ScenarioCard> createState() => _ScenarioCardState();
+}
 
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ScenarioScreen(scenario: scenario),
-            ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 40)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      scenario.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (scenario.description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+class _ScenarioCardState extends State<_ScenarioCard> {
+  bool _isPressed = false;
+
+  Color _getCardColor(String scenarioId) {
+    switch (scenarioId) {
+      case 'hospital':
+        return const Color(0xFF4DD8F0);
+      case 'bank':
+        return const Color(0xFFFFD600);
+      case 'immigration':
+        return const Color(0xFFC97EE8);
+      case 'school':
+        return const Color(0xFF7BD389);
+      case 'restaurant':
+        return const Color(0xFFFF9F7F);
+      case 'mart':
+        return const Color(0xFF8EC5FF);
+      default:
+        return const Color(0xFFF5F5F5);
+    }
+  }
+
+  Color _getShadowColor(String scenarioId) {
+    switch (scenarioId) {
+      case 'hospital':
+        return const Color(0xFF2BA8C0);
+      case 'bank':
+        return const Color(0xFFC9A800);
+      case 'immigration':
+        return const Color(0xFFA05EC0);
+      case 'school':
+        return const Color(0xFF4EA65D);
+      case 'restaurant':
+        return const Color(0xFFD67355);
+      case 'mart':
+        return const Color(0xFF5F9BDA);
+      default:
+        return Colors.grey.shade400;
+    }
+  }
+
+  String _getShortDescription(String scenarioId) {
+    switch (scenarioId) {
+      case 'hospital':
+        return '증상을 말해요';
+      case 'bank':
+        return '환전해요';
+      case 'immigration':
+        return '체류를 신청해요';
+      case 'school':
+        return '학교 생활을 연습해요';
+      case 'restaurant':
+        return '주문하고 요청해요';
+      case 'mart':
+        return '물건을 찾고 계산해요';
+      default:
+        return widget.scenario.description;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
+    final cardColor = _getCardColor(widget.scenario.id);
+    final shadowColor = _getShadowColor(widget.scenario.id);
+    final shortDescription = _getShortDescription(widget.scenario.id);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      transform: Matrix4.translationValues(0, _isPressed ? -4 : 0, 0),
+      transformAlignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTapDown: (_) => setState(() => _isPressed = true),
+          onTapUp: (_) => setState(() => _isPressed = false),
+          onTapCancel: () => setState(() => _isPressed = false),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ScenarioScreen(scenario: widget.scenario),
+              ),
+            );
+          },
+          splashColor: Colors.white.withValues(alpha: 0.35),
+          highlightColor: Colors.white.withValues(alpha: 0.2),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Text(emoji, style: const TextStyle(fontSize: 44)),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        scenario.description,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
+                        widget.scenario.title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        shortDescription,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.grey),
-            ],
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.black54,
+                    size: 22,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -187,13 +320,17 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: onRetry,

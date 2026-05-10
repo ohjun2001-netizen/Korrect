@@ -51,23 +51,47 @@ MIN_PAUSE_DURATION = 0.15      # 이 초 이상 연속 묵음이어야 pause로 
 
 
 # ── 내부 유틸 ─────────────────────────────────────────────────────────
+def _infer_suffix(audio_bytes: bytes) -> str:
+    """magic bytes로 컨테이너 포맷 추정."""
+    if audio_bytes[:4] == b'\x1a\x45\xdf\xa3':
+        return '.webm'
+    if len(audio_bytes) > 8 and audio_bytes[4:8] == b'ftyp':
+        return '.mp4'
+    if audio_bytes[:4] == b'RIFF':
+        return '.wav'
+    return '.wav'
+
+
 def _with_tempfile(audio_bytes: bytes) -> str:
     """오디오 바이트를 실제 WAV(16kHz mono)로 변환해 임시 파일로 저장."""
     from pydub import AudioSegment
-    import io
+    suffix = _infer_suffix(audio_bytes)
+    src_tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-        audio = audio.set_frame_rate(16000).set_channels(1)
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        audio.export(tmp.name, format="wav")
-        tmp.close()
-        return tmp.name
-    except Exception:
-        # 변환 실패 시 원본 바이트를 그대로 저장
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp.write(audio_bytes)
-        tmp.close()
-        return tmp.name
+        src_tmp.write(audio_bytes)
+        src_tmp.close()
+        try:
+            audio = AudioSegment.from_file(src_tmp.name)
+            original_dBFS = audio.dBFS
+            if original_dBFS != float("-inf") and original_dBFS < -20:
+                audio = audio.normalize()
+                print(f"[Prosody] 음량 정규화 적용 ({original_dBFS:.1f} dBFS → 0 dBFS)")
+            audio = audio.set_frame_rate(16000).set_channels(1)
+            out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            audio.export(out_tmp.name, format="wav")
+            out_tmp.close()
+            return out_tmp.name
+        except Exception:
+            # 변환 실패 시 원본 바이트를 그대로 저장
+            out_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            out_tmp.write(audio_bytes)
+            out_tmp.close()
+            return out_tmp.name
+    finally:
+        try:
+            os.unlink(src_tmp.name)
+        except Exception:
+            pass
 
 
 # ── 피처 추출 ─────────────────────────────────────────────────────────
@@ -76,11 +100,31 @@ def extract_pitch(audio_bytes: bytes) -> np.ndarray:
     tmp_path = _with_tempfile(audio_bytes)
     try:
         y, sr = librosa.load(tmp_path, sr=None)
+        if len(y) == 0:
+            return np.array([])
         f0, _, _ = librosa.pyin(
             y, fmin=FMIN, fmax=FMAX, sr=sr,
             frame_length=FRAME_LENGTH, hop_length=HOP_LENGTH,
         )
-        return np.nan_to_num(f0, nan=0.0)
+        pitch = np.nan_to_num(f0, nan=0.0)
+        if np.count_nonzero(pitch) > 0:
+            return pitch
+
+        # pYIN returns all-zero only for completely silent/unvoiced audio.
+        # Use YIN as fallback, masking silent frames with RMS threshold.
+        yin = librosa.yin(
+            y,
+            fmin=FMIN,
+            fmax=FMAX,
+            sr=sr,
+            frame_length=FRAME_LENGTH,
+            hop_length=HOP_LENGTH,
+        )
+        yin_pitch = np.nan_to_num(yin, nan=0.0)
+        rms = librosa.feature.rms(y=y, hop_length=HOP_LENGTH)[0]
+        if len(rms) == len(yin_pitch):
+            yin_pitch[rms <= RMS_SILENCE_THRESHOLD] = 0.0
+        return yin_pitch
     finally:
         os.unlink(tmp_path)
 

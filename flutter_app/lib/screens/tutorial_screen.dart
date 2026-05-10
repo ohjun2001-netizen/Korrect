@@ -199,7 +199,7 @@ class _TutorialPage extends StatelessWidget {
             width: 160,
             height: 160,
             decoration: BoxDecoration(
-              color: data.color.withOpacity(0.15),
+              color: data.color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Center(

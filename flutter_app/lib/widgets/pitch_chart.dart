@@ -241,7 +241,7 @@ class _PitchChartState extends State<PitchChart> {
                   spots: userSpots,
                   isCurved: true,
                   color: _isPlaying
-                      ? Colors.blue.withOpacity(0.25)
+                      ? Colors.blue.withValues(alpha: 0.25)
                       : Colors.blue,
                   barWidth: 2,
                   dotData: const FlDotData(show: false),
@@ -261,7 +261,7 @@ class _PitchChartState extends State<PitchChart> {
                     spots: refSpots,
                     isCurved: true,
                     color: _isPlaying
-                        ? Colors.orange.withOpacity(0.25)
+                        ? Colors.orange.withValues(alpha: 0.25)
                         : Colors.orange,
                     barWidth: 2,
                     dotData: const FlDotData(show: false),
