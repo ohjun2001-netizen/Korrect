@@ -70,9 +70,20 @@ async def process_turn(
     if len(audio_bytes) == 0:
         raise HTTPException(status_code=400, detail="빈 오디오 파일입니다.")
 
-    # 1. STT
+    # 1. STT (단어 타임스탬프 포함)
     stt_result = whisper_service.transcribe(audio_bytes, audio.filename or "audio.wav")
-    stt = STTResponse(text=stt_result["text"], language=stt_result["language"])
+    word_timestamps = stt_result.get("words", [])
+    word_scores = []
+    if word_timestamps:
+        try:
+            word_scores = prosody_service.score_words(audio_bytes, word_timestamps)
+        except Exception as e:
+            print(f"[scenario] 단어별 점수 계산 실패: {e}")
+    stt = STTResponse(
+        text=stt_result["text"],
+        language=stt_result["language"],
+        words=word_scores,
+    )
 
     # 2. 운율 분석 + 피드백 텍스트
     prosody = None
@@ -85,8 +96,8 @@ async def process_turn(
     feedback_text = prosody_result.get("feedback")
 
     if prosody_result.get("pitch_contour"):
-        score_val = prosody_result.get("score") or 0.0
-        dtw_val = prosody_result.get("dtw_distance") or 0.0
+        score_val = prosody_result.get("score") if prosody_result.get("score") is not None else 0.0
+        dtw_val = prosody_result.get("dtw_distance") if prosody_result.get("dtw_distance") is not None else 0.0
         prosody = ProsodyResponse(
             pitch_contour=prosody_result["pitch_contour"],
             ref_pitch_contour=prosody_result.get("ref_pitch_contour") or [],
@@ -98,8 +109,21 @@ async def process_turn(
             mfcc_cosine_score=prosody_result.get("mfcc_cosine_score"),
             composite_score=prosody_result.get("composite_score"),
             accent_score=prosody_result.get("accent_score"),
+            speech_rate_user=prosody_result.get("speech_rate_user"),
+            speech_rate_ref=prosody_result.get("speech_rate_ref"),
+            pause_count_user=prosody_result.get("pause_count_user"),
+            pause_count_ref=prosody_result.get("pause_count_ref"),
+            rhythm_feedback=prosody_result.get("rhythm_feedback"),
+            formant_score=prosody_result.get("formant_score"),
+            syllable_score=prosody_result.get("syllable_score"),
+            syllable_count_user=prosody_result.get("syllable_count_user"),
+            syllable_count_ref=prosody_result.get("syllable_count_ref"),
+            voiced_ratio_score=prosody_result.get("voiced_ratio_score"),
+            pitch_slope_score=prosody_result.get("pitch_slope_score"),
         )
-        if prosody_result.get("score") is not None:
+        if prosody_result.get("composite_score") is not None:
+            total_score = scoring_service.compute_total_score(prosody.composite_score, None)
+        elif prosody_result.get("score") is not None:
             total_score = scoring_service.compute_total_score(prosody.score, None)
 
     # 3. AI 대화
@@ -109,7 +133,10 @@ async def process_turn(
             hint=None,
         )
     else:
-        history_data = json.loads(history)
+        try:
+            history_data = json.loads(history)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="history 필드가 유효한 JSON이 아닙니다.")
         chat_result = gemini_service.chat(
             scenario=scenario_id,
             user_text=stt.text,

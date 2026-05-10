@@ -23,21 +23,22 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   final List<Map<String, String>> _history = [];
   final ScrollController _scrollController = ScrollController();
 
+  RefPlayer? _referencePlayer;
+  bool _isReferencePlaying = false;
   bool _isRecording = false;
   bool _isLoading = false;
   int _turnIndex = 0;
+  DateTime? _recordingStartTime;
   double _totalScore = 0;
   int _scoreCount = 0;
   double _rhythmTotal = 0;
   double _stressTotal = 0;
   double _mfccTotal = 0;
   int _subScoreCount = 0;
-
-  static const int _maxTurns = 5;
-
-  // Store last hint and last reference audio URL for replay buttons
   String? _lastHint;
   String? _lastRefAudioUrl;
+
+  static const int _maxTurns = 4;
 
   @override
   void initState() {
@@ -48,6 +49,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   @override
   void dispose() {
     AudioService.dispose();
+    _referencePlayer?.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -58,6 +60,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
       final data = await ApiService.getOpeningMessage(widget.scenario.id);
       final reply = data['reply'] as String;
       final hint = data['hint'] as String?;
+      if (!mounted) return;
       setState(() {
         _messages.add(_ChatMessage(
           text: reply,
@@ -65,10 +68,12 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
           hint: hint,
         ));
         _history.add({'role': 'model', 'text': reply});
+        _lastHint = hint;
         _isLoading = false;
       });
       _scrollToBottom();
-    } catch (e) {
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -85,17 +90,27 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
     try {
       final hasPermission = await AudioService.hasPermission();
       if (!hasPermission) {
-        _showSnackBar('마이크 권한이 필요해요!');
+        _showSnackBar('마이크 권한이 필요해요.');
         return;
       }
       await AudioService.startRecording();
-      setState(() => _isRecording = true);
+      if (!mounted) return;
+      setState(() {
+        _isRecording = true;
+        _recordingStartTime = DateTime.now();
+      });
     } catch (e) {
-      _showSnackBar('녹음 시작 실패: $e');
+      _showSnackBar('녹음 시작에 실패했어요: $e');
     }
   }
 
   Future<void> _stopAndProcess() async {
+    if (_recordingStartTime != null &&
+        DateTime.now().difference(_recordingStartTime!).inMilliseconds < 1000) {
+      _showSnackBar('1초 이상 말해 주세요.');
+      return;
+    }
+
     setState(() {
       _isRecording = false;
       _isLoading = true;
@@ -103,12 +118,21 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
     final audio = await AudioService.stopRecording();
     if (audio == null) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
       _showSnackBar('녹음 파일을 찾을 수 없어요.');
       return;
     }
+
     final size = audio.bytes?.length ?? await audio.file!.length();
-    _showSnackBar('녹음 파일 크기: ${size}B');
+    if (size < 4096) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      _showSnackBar('녹음이 너무 짧거나 소리가 작아요.');
+      return;
+    }
 
     try {
       final result = await ApiService.processTurn(
@@ -117,12 +141,14 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         history: List.from(_history),
         turnIndex: _turnIndex,
       );
-
+      if (!mounted) return;
       _handleResult(result);
     } catch (e) {
       _showSnackBar('처리 중 오류가 발생했어요: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -133,7 +159,6 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
           ? '${AppConstants.baseUrl}/api/tts?text=${Uri.encodeComponent(sttText)}'
           : null;
 
-      // Store for replay buttons
       _lastRefAudioUrl = refAudioUrl;
 
       _messages.add(_ChatMessage(
@@ -143,6 +168,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
         score: result.totalScore,
         prosodyFeedback: result.prosodyFeedback,
         refAudioUrl: refAudioUrl,
+        words: result.stt.words,
       ));
     });
 
@@ -150,6 +176,7 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
       _totalScore += result.totalScore!;
       _scoreCount++;
     }
+
     final p = result.prosody;
     if (p != null &&
         p.rhythmScore != null &&
@@ -164,18 +191,14 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
     _history.add({'role': 'user', 'text': result.stt.text});
 
     setState(() {
-      final reply = result.chat.reply;
-      final hint = result.chat.hint;
-
-      // Store last hint for replay button
-      _lastHint = hint;
-
       _messages.add(_ChatMessage(
-        text: reply,
+        text: result.chat.reply,
         isAi: true,
-        hint: hint,
+        hint: result.chat.hint,
+        hintRu: result.chat.hintRu,
       ));
-      _history.add({'role': 'model', 'text': reply});
+      _lastHint = result.chat.hintRu ?? result.chat.hint;
+      _history.add({'role': 'model', 'text': result.chat.reply});
       _turnIndex++;
     });
 
@@ -183,11 +206,10 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
     if (_turnIndex >= _maxTurns) {
       Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
         final avgScore = _scoreCount > 0 ? _totalScore / _scoreCount : null;
-        final avgRhythm =
-            _subScoreCount > 0 ? _rhythmTotal / _subScoreCount : null;
-        final avgStress =
-            _subScoreCount > 0 ? _stressTotal / _subScoreCount : null;
+        final avgRhythm = _subScoreCount > 0 ? _rhythmTotal / _subScoreCount : null;
+        final avgStress = _subScoreCount > 0 ? _stressTotal / _subScoreCount : null;
         final avgMfcc = _subScoreCount > 0 ? _mfccTotal / _subScoreCount : null;
         Navigator.pushReplacement(
           context,
@@ -207,18 +229,42 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   }
 
   void _showHint() {
-    if (_lastHint != null) {
-      _showSnackBar('💡 힌트: $_lastHint');
-    } else {
-      _showSnackBar('💡 아직 힌트가 없어요. 먼저 AI와 대화해보세요!');
+    if (_lastHint == null || _lastHint!.isEmpty) {
+      _showSnackBar('아직 힌트가 없어요.');
+      return;
     }
+    _showSnackBar(_lastHint!);
   }
 
-  void _replayReferenceAudio() {
-    if (_lastRefAudioUrl != null) {
-      _showSnackBar('🔊 원어민 발음을 재생합니다...');
-    } else {
-      _showSnackBar('🔊 아직 원어민 발음이 없어요. 먼저 말해보세요!');
+  Future<void> _replayReferenceAudio() async {
+    final url = _lastRefAudioUrl;
+    if (url == null || url.isEmpty) {
+      _showSnackBar('아직 원어민 발음이 없어요.');
+      return;
+    }
+
+    _referencePlayer ??= RefPlayer();
+    if (_isReferencePlaying) {
+      await _referencePlayer!.stop();
+      if (mounted) {
+        setState(() => _isReferencePlaying = false);
+      }
+      return;
+    }
+
+    try {
+      setState(() => _isReferencePlaying = true);
+      await _referencePlayer!.play(url);
+      _referencePlayer!.onComplete.listen((_) {
+        if (mounted) {
+          setState(() => _isReferencePlaying = false);
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isReferencePlaying = false);
+      }
+      _showSnackBar('재생에 실패했어요: $e');
     }
   }
 
@@ -242,32 +288,31 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
+    final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '?';
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
-        if (!didPop) {
-          final shouldPop = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('연습을 그만할까요?'),
-              content: const Text('지금 나가면 진행 상황이 저장되지 않아요.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('계속 연습'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('나가기'),
-                ),
-              ],
-            ),
-          );
-          if (shouldPop == true) {
-            Navigator.pop(context);
-          }
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('연습을 그만할까요?'),
+            content: const Text('지금 나가면 진행 상황이 저장되지 않아요.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('계속 연습'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('나가기', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && context.mounted) {
+          Navigator.pop(context);
         }
       },
       child: Scaffold(
@@ -281,46 +326,50 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
             Container(
+              margin: const EdgeInsets.only(right: 12, top: 10, bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('$_turnIndex/$_maxTurns',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold)),
+                  Text(
+                    '$_turnIndex/$_maxTurns',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(width: 6),
                   Row(
                     children: List.generate(
-                        _maxTurns,
-                        (i) => Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(left: 3),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: i < _turnIndex
-                                    ? Colors.white
-                                    : Colors.white.withOpacity(0.35),
-                              ),
-                            )),
+                      _maxTurns,
+                      (i) => Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(left: 3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i < _turnIndex
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.35),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
           ],
-          flexibleSpace: Container(
+          flexibleSpace: const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFFF9500),
-                  const Color(0xFFFFC107),
+                  Color(0xFFFF9500),
+                  Color(0xFFFFC107),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -358,38 +407,34 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
               ),
             Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.only(
+                borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(24),
                   topRight: Radius.circular(24),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFE8E0C8),
+                    color: Color(0xFFE8E0C8),
                     blurRadius: 0,
-                    offset: const Offset(0, -3),
+                    offset: Offset(0, -3),
                   ),
                 ],
               ),
               child: Column(
                 children: [
-                  if (_isRecording)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        '말하고 있어요... 버튼을 눌러서 멈춰요',
-                        style: TextStyle(color: Colors.red, fontSize: 16),
-                      ),
-                    )
-                  else
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        '버튼을 눌러서 말해봐요!',
-                        style: TextStyle(color: Color(0xFFFF9500), fontSize: 16),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _isRecording
+                          ? '말하고 있어요... 버튼을 눌러서 멈춰요'
+                          : '버튼을 눌러서 말해봐요!',
+                      style: TextStyle(
+                        color: _isRecording ? Colors.red : const Color(0xFFFF9500),
+                        fontSize: 16,
                       ),
                     ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -402,10 +447,17 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
                             shape: BoxShape.circle,
                             color: const Color(0xFFFFF3CD),
                             border: Border.all(
-                                color: const Color(0xFFFFD700), width: 2),
+                              color: const Color(0xFFFFD700),
+                              width: 2,
+                            ),
                           ),
                           child: const Center(
-                              child: Text('💡', style: TextStyle(fontSize: 20))),
+                            child: Icon(
+                              Icons.lightbulb_outline,
+                              size: 22,
+                              color: Color(0xFFFF9500),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -424,10 +476,19 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
                             shape: BoxShape.circle,
                             color: const Color(0xFFFFF3CD),
                             border: Border.all(
-                                color: const Color(0xFFFFD700), width: 2),
+                              color: const Color(0xFFFFD700),
+                              width: 2,
+                            ),
                           ),
-                          child: const Center(
-                              child: Text('🔊', style: TextStyle(fontSize: 20))),
+                          child: Center(
+                            child: Icon(
+                              _isReferencePlaying
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.volume_up_outlined,
+                              size: 22,
+                              color: const Color(0xFFFF9500),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -446,19 +507,23 @@ class _ChatMessage {
   final String text;
   final bool isAi;
   final String? hint;
+  final String? hintRu;
   final ProsodyResult? prosody;
   final double? score;
   final String? prosodyFeedback;
   final String? refAudioUrl;
+  final List<WordScore> words;
 
   _ChatMessage({
     required this.text,
     required this.isAi,
     this.hint,
+    this.hintRu,
     this.prosody,
     this.score,
     this.prosodyFeedback,
     this.refAudioUrl,
+    this.words = const [],
   });
 }
 
@@ -473,6 +538,7 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _showPitch = false;
+  bool _showHintRu = false;
   RefPlayer? _player;
   bool _isPlaying = false;
 
@@ -486,13 +552,23 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final url = widget.message.refAudioUrl!;
     if (_isPlaying) {
       await _player?.stop();
-      setState(() => _isPlaying = false);
+      if (mounted) {
+        setState(() => _isPlaying = false);
+      }
       return;
     }
+
     _player ??= RefPlayer();
     try {
       await _player!.play(url);
-      setState(() => _isPlaying = true);
+      if (mounted) {
+        setState(() => _isPlaying = true);
+      }
+      _player!.onComplete.listen((_) {
+        if (mounted) {
+          setState(() => _isPlaying = false);
+        }
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -521,8 +597,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 const CircleAvatar(
                   radius: 18,
                   backgroundColor: Color(0xFFFF9500),
-                  child: Text('AI',
-                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  child: Text(
+                    'AI',
+                    style: TextStyle(color: Colors.white, fontSize: 14),
+                  ),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -537,18 +615,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 5,
                       ),
                     ],
                   ),
-                  child: Text(
-                    widget.message.text,
-                    style: TextStyle(
-                      color: isAi ? Colors.black87 : Colors.white,
-                      fontSize: 16,
-                    ),
-                  ),
+                  child: !isAi && widget.message.words.isNotEmpty
+                      ? _ColoredWordsText(words: widget.message.words)
+                      : Text(
+                          widget.message.text,
+                          style: TextStyle(
+                            color: isAi ? Colors.black87 : Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
               ),
               if (!isAi && widget.message.score != null) ...[
@@ -560,27 +640,40 @@ class _MessageBubbleState extends State<_MessageBubble> {
           if (isAi && widget.message.hint != null)
             Padding(
               padding: const EdgeInsets.only(left: 48, top: 4),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.amber[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade300),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('💡 ', style: TextStyle(fontSize: 14)),
-                    Text(
-                      '"${widget.message.hint}"',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.amber[900],
-                        fontStyle: FontStyle.italic,
+              child: GestureDetector(
+                onTap: widget.message.hintRu != null
+                    ? () => setState(() => _showHintRu = !_showHintRu)
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.lightbulb_outline,
+                        size: 14,
+                        color: Color(0xFFFF9500),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _showHintRu && widget.message.hintRu != null
+                              ? '"${widget.message.hintRu}"'
+                              : '"${widget.message.hint}"',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.amber[900],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -596,7 +689,12 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('🗣️ ', style: TextStyle(fontSize: 14)),
+                  const Icon(
+                    Icons.feedback_outlined,
+                    size: 14,
+                    color: Colors.blue,
+                  ),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       widget.message.prosodyFeedback!,
@@ -617,20 +715,19 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: TextButton.icon(
                 onPressed: _togglePlay,
                 icon: Icon(
-                  _isPlaying
-                      ? Icons.stop_circle_outlined
-                      : Icons.volume_up_outlined,
+                  _isPlaying ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
                   size: 18,
                   color: const Color(0xFFFF9500),
                 ),
                 label: Text(
                   _isPlaying ? '멈추기' : '원어민 발음 듣기',
-                  style:
-                      const TextStyle(fontSize: 13, color: Color(0xFFFF9500)),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFFFF9500),
+                  ),
                 ),
                 style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   minimumSize: Size.zero,
                 ),
               ),
@@ -651,8 +748,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   style: const TextStyle(fontSize: 13),
                 ),
                 style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   minimumSize: Size.zero,
                 ),
               ),
@@ -666,7 +762,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 5,
                     ),
                   ],
@@ -679,6 +775,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     PitchChart(
                       userPitch: widget.message.prosody!.pitchContour,
                       refPitch: widget.message.prosody!.refPitchContour,
+                      refAudioUrl: widget.message.refAudioUrl,
                     ),
                   ],
                 ),
@@ -697,7 +794,7 @@ class _ScoreBadge extends StatelessWidget {
 
   Color get _color {
     if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.amber;
+    if (score >= 60) return Colors.orange;
     return Colors.red;
   }
 
@@ -710,7 +807,7 @@ class _ScoreBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
-        '${score.toInt()}점',
+        '${score.toInt()}',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 14,
@@ -734,9 +831,17 @@ class _ScoreBreakdown extends StatelessWidget {
       MapEntry('억양', prosody.score),
       if (prosody.rhythmScore != null) MapEntry('리듬', prosody.rhythmScore!),
       if (prosody.stressScore != null) MapEntry('강세', prosody.stressScore!),
-      if (prosody.mfccCosineScore != null)
-        MapEntry('음색', prosody.mfccCosineScore!),
+      if (prosody.mfccCosineScore != null) MapEntry('음색', prosody.mfccCosineScore!),
+      if (prosody.formantScore != null) MapEntry('모음', prosody.formantScore!),
+      if (prosody.syllableScore != null) MapEntry('음절', prosody.syllableScore!),
+      if (prosody.voicedRatioScore != null) MapEntry('발성', prosody.voicedRatioScore!),
+      if (prosody.pitchSlopeScore != null) MapEntry('기울기', prosody.pitchSlopeScore!),
     ];
+
+    final hasRhythmDetail = prosody.speechRateUser != null &&
+        prosody.speechRateRef != null &&
+        prosody.pauseCountUser != null &&
+        prosody.pauseCountRef != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,11 +849,138 @@ class _ScoreBreakdown extends StatelessWidget {
         const Text(
           '점수 세부',
           style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.black54,
+          ),
         ),
         const SizedBox(height: 6),
         ...items.map((e) => _ScoreBar(label: e.key, score: e.value)),
+        if (hasRhythmDetail) ...[
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          const Text(
+            '리듬 세부',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _RhythmDetailRow(
+            label: '속도',
+            userValue: prosody.speechRateUser!.toStringAsFixed(1),
+            refValue: prosody.speechRateRef!.toStringAsFixed(1),
+          ),
+          _RhythmDetailRow(
+            label: '멈춤',
+            userValue: '${prosody.pauseCountUser}',
+            refValue: '${prosody.pauseCountRef}',
+          ),
+          if (prosody.rhythmFeedback != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.purple[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.tips_and_updates_outlined,
+                    size: 14,
+                    color: Colors.purple,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      prosody.rhythmFeedback!,
+                      style: TextStyle(fontSize: 11, color: Colors.purple[900]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ],
+    );
+  }
+}
+
+class _RhythmDetailRow extends StatelessWidget {
+  final String label;
+  final String userValue;
+  final String refValue;
+
+  const _RhythmDetailRow({
+    required this.label,
+    required this.userValue,
+    required this.refValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '나: $userValue',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Text(
+            '원어민: $refValue',
+            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColoredWordsText extends StatelessWidget {
+  final List<WordScore> words;
+
+  const _ColoredWordsText({required this.words});
+
+  Color _wordColor(double? score) {
+    if (score == null) return Colors.white;
+    if (score >= 70) return Colors.greenAccent[100]!;
+    if (score >= 40) return Colors.amberAccent[100]!;
+    return Colors.redAccent[100]!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+        children: [
+          for (final w in words)
+            TextSpan(
+              text: '${w.word} ',
+              style: TextStyle(
+                color: _wordColor(w.score),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -761,7 +993,7 @@ class _ScoreBar extends StatelessWidget {
 
   Color get _barColor {
     if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.amber;
+    if (score >= 60) return Colors.orange;
     return Colors.redAccent;
   }
 
@@ -772,17 +1004,19 @@ class _ScoreBar extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 36,
-            child: Text(label,
-                style: const TextStyle(fontSize: 13, color: Colors.black54)),
+            width: 56,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: score / 100,
-                minHeight: 10,
+                minHeight: 8,
                 backgroundColor: Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation(_barColor),
               ),
@@ -790,10 +1024,10 @@ class _ScoreBar extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           SizedBox(
-            width: 36,
+            width: 32,
             child: Text(
               '${score.toInt()}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right,
             ),
           ),

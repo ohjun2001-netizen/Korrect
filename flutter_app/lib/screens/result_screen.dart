@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
+import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../models/scenario_model.dart';
 import '../services/progress_service.dart';
@@ -22,16 +22,18 @@ class ResultScreen extends StatefulWidget {
     this.stressScore,
     this.mfccScore,
   }) {
-    ProgressService.saveSession(SessionRecord(
-      scenarioId: scenario.id,
-      scenarioTitle: scenario.title,
-      totalScore: totalScore,
-      rhythmScore: rhythmScore,
-      stressScore: stressScore,
-      mfccScore: mfccScore,
-      turnCount: turnCount,
-      date: DateTime.now(),
-    ));
+    ProgressService.saveSession(
+      SessionRecord(
+        scenarioId: scenario.id,
+        scenarioTitle: scenario.title,
+        totalScore: totalScore,
+        rhythmScore: rhythmScore,
+        stressScore: stressScore,
+        mfccScore: mfccScore,
+        turnCount: turnCount,
+        date: DateTime.now(),
+      ),
+    );
   }
 
   @override
@@ -39,14 +41,15 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  late ConfettiController _confettiController;
+  late final ConfettiController _confettiController;
 
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
-    
-    // Start confetti if score is 80 or higher
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
+
     if (widget.totalScore != null && widget.totalScore! >= 80) {
       _confettiController.play();
     }
@@ -59,10 +62,10 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   String get _emoji {
-    if (widget.totalScore == null) return '🎉';
-    if (widget.totalScore! >= 80) return '🏆';
-    if (widget.totalScore! >= 60) return '😊';
-    return '💪';
+    if (widget.totalScore == null) return ':)';
+    if (widget.totalScore! >= 80) return '***';
+    if (widget.totalScore! >= 60) return '++';
+    return '^^';
   }
 
   String get _message {
@@ -80,11 +83,13 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   bool get _hasSubScores =>
-      widget.rhythmScore != null && widget.stressScore != null && widget.mfccScore != null;
+      widget.rhythmScore != null &&
+      widget.stressScore != null &&
+      widget.mfccScore != null;
 
   @override
   Widget build(BuildContext context) {
-    final scenarioEmoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
+    final scenarioEmoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '?';
 
     return Stack(
       children: [
@@ -97,24 +102,18 @@ class _ResultScreenState extends State<ResultScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 24),
-
-                  // 결과 이모지
-                  Text(_emoji, style: const TextStyle(fontSize: 72)),
+                  Text(_emoji, style: const TextStyle(fontSize: 40)),
                   const SizedBox(height: 16),
-
                   const Text(
                     '연습 완료!',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-
                   Text(
                     '$scenarioEmoji ${widget.scenario.title} 대화 연습',
                     style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 32),
-
-                  // 점수 카드
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
@@ -123,7 +122,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 10,
                         ),
                       ],
@@ -159,11 +158,12 @@ class _ResultScreenState extends State<ResultScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _StatItem(label: '대화 횟수', value: '${widget.turnCount}번'),
+                            _StatItem(
+                              label: '대화 횟수',
+                              value: '${widget.turnCount}번',
+                            ),
                           ],
                         ),
-
-                        // 세부 점수 바
                         if (_hasSubScores) ...[
                           const SizedBox(height: 20),
                           const Divider(),
@@ -190,8 +190,6 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-
-                  // 다시 연습 버튼
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -217,8 +215,6 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // 같은 시나리오 다시
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
@@ -241,11 +237,10 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
           ),
         ),
-        // Confetti widget on top
         Align(
           alignment: Alignment.topCenter,
           child: ConfettiWidget(
-            confettiController: _confettiController,  // <-- CORRECTED
+            confettiController: _confettiController,
             blastDirectionality: BlastDirectionality.explosive,
             shouldLoop: false,
             colors: const [
@@ -274,7 +269,10 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
       ],
     );
@@ -300,7 +298,7 @@ class _ResultScoreBar extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 36,
+            width: 56,
             child: Text(
               label,
               style: const TextStyle(fontSize: 13, color: Colors.black54),
@@ -320,7 +318,7 @@ class _ResultScoreBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 36,
+            width: 52,
             child: Text(
               '${score.toInt()}점',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
