@@ -35,6 +35,10 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
 
   static const int _maxTurns = 5;
 
+  // Store last hint and last reference audio URL for replay buttons
+  String? _lastHint;
+  String? _lastRefAudioUrl;
+
   @override
   void initState() {
     super.initState();
@@ -123,12 +127,14 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   }
 
   void _handleResult(ProcessResult result) {
-    // 사용자 발화 추가
     setState(() {
       final sttText = result.stt.text.trim();
       final refAudioUrl = sttText.isNotEmpty
           ? '${AppConstants.baseUrl}/api/tts?text=${Uri.encodeComponent(sttText)}'
           : null;
+
+      // Store for replay buttons
+      _lastRefAudioUrl = refAudioUrl;
 
       _messages.add(_ChatMessage(
         text: result.stt.text.isEmpty ? '(알아듣지 못했어요)' : result.stt.text,
@@ -140,41 +146,48 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
       ));
     });
 
-    // 점수 누적
     if (result.totalScore != null) {
       _totalScore += result.totalScore!;
       _scoreCount++;
     }
     final p = result.prosody;
-    if (p != null && p.rhythmScore != null && p.stressScore != null && p.mfccCosineScore != null) {
+    if (p != null &&
+        p.rhythmScore != null &&
+        p.stressScore != null &&
+        p.mfccCosineScore != null) {
       _rhythmTotal += p.rhythmScore!;
       _stressTotal += p.stressScore!;
       _mfccTotal += p.mfccCosineScore!;
       _subScoreCount++;
     }
 
-    // 히스토리 업데이트
     _history.add({'role': 'user', 'text': result.stt.text});
 
-    // AI 답변 추가
     setState(() {
+      final reply = result.chat.reply;
+      final hint = result.chat.hint;
+
+      // Store last hint for replay button
+      _lastHint = hint;
+
       _messages.add(_ChatMessage(
-        text: result.chat.reply,
+        text: reply,
         isAi: true,
-        hint: result.chat.hint,
+        hint: hint,
       ));
-      _history.add({'role': 'model', 'text': result.chat.reply});
+      _history.add({'role': 'model', 'text': reply});
       _turnIndex++;
     });
 
     _scrollToBottom();
 
-    // 최대 턴 도달 시 결과 화면으로
     if (_turnIndex >= _maxTurns) {
       Future.delayed(const Duration(milliseconds: 800), () {
         final avgScore = _scoreCount > 0 ? _totalScore / _scoreCount : null;
-        final avgRhythm = _subScoreCount > 0 ? _rhythmTotal / _subScoreCount : null;
-        final avgStress = _subScoreCount > 0 ? _stressTotal / _subScoreCount : null;
+        final avgRhythm =
+            _subScoreCount > 0 ? _rhythmTotal / _subScoreCount : null;
+        final avgStress =
+            _subScoreCount > 0 ? _stressTotal / _subScoreCount : null;
         final avgMfcc = _subScoreCount > 0 ? _mfccTotal / _subScoreCount : null;
         Navigator.pushReplacement(
           context,
@@ -190,6 +203,22 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
           ),
         );
       });
+    }
+  }
+
+  void _showHint() {
+    if (_lastHint != null) {
+      _showSnackBar('💡 힌트: $_lastHint');
+    } else {
+      _showSnackBar('💡 아직 힌트가 없어요. 먼저 AI와 대화해보세요!');
+    }
+  }
+
+  void _replayReferenceAudio() {
+    if (_lastRefAudioUrl != null) {
+      _showSnackBar('🔊 원어민 발음을 재생합니다...');
+    } else {
+      _showSnackBar('🔊 아직 원어민 발음이 없어요. 먼저 말해보세요!');
     }
   }
 
@@ -215,96 +244,204 @@ class _ScenarioScreenState extends State<ScenarioScreen> {
   Widget build(BuildContext context) {
     final emoji = AppConstants.scenarioEmoji[widget.scenario.id] ?? '💬';
 
-    return Scaffold(
-      backgroundColor: const Color(AppConstants.bgColor),
-      appBar: AppBar(
-        backgroundColor: const Color(AppConstants.primaryColor),
-        title: Text(
-          '$emoji ${widget.scenario.title}',
-          style: const TextStyle(color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Text(
-                '$_turnIndex/$_maxTurns',
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 대화 목록
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _MessageBubble(message: _messages[index]);
-              },
-            ),
-          ),
-
-          // 로딩 표시
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 8),
-                  Text('처리 중...', style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-            ),
-
-          // 녹음 버튼
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            color: Colors.white,
-            child: Column(
-              children: [
-                if (_isRecording)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '말하고 있어요... 버튼을 눌러서 멈춰요',
-                      style: TextStyle(color: Colors.red, fontSize: 13),
-                    ),
-                  )
-                else
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '버튼을 눌러서 말해봐요!',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                  ),
-                RecordButton(
-                  isRecording: _isRecording,
-                  isLoading: _isLoading,
-                  onTap: _isLoading ? () {} : _toggleRecording,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (!didPop) {
+          final shouldPop = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('연습을 그만할까요?'),
+              content: const Text('지금 나가면 진행 상황이 저장되지 않아요.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('계속 연습'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('나가기'),
                 ),
               ],
             ),
+          );
+          if (shouldPop == true) {
+            Navigator.pop(context);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFFFF9E6),
+        appBar: AppBar(
+          title: Text(
+            '$emoji ${widget.scenario.title}',
+            style: const TextStyle(color: Colors.white, fontSize: 20),
           ),
-        ],
+          centerTitle: true,
+          iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('$_turnIndex/$_maxTurns',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 6),
+                  Row(
+                    children: List.generate(
+                        _maxTurns,
+                        (i) => Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(left: 3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i < _turnIndex
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.35),
+                              ),
+                            )),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFFF9500),
+                  const Color(0xFFFFC107),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+          ),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length,
+                itemBuilder: (context, index) {
+                  return _MessageBubble(message: _messages[index]);
+                },
+              ),
+            ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('처리 중...', style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE8E0C8),
+                    blurRadius: 0,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  if (_isRecording)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '말하고 있어요... 버튼을 눌러서 멈춰요',
+                        style: TextStyle(color: Colors.red, fontSize: 16),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '버튼을 눌러서 말해봐요!',
+                        style: TextStyle(color: Color(0xFFFF9500), fontSize: 16),
+                      ),
+                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _showHint,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFFFF3CD),
+                            border: Border.all(
+                                color: const Color(0xFFFFD700), width: 2),
+                          ),
+                          child: const Center(
+                              child: Text('💡', style: TextStyle(fontSize: 20))),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      RecordButton(
+                        isRecording: _isRecording,
+                        isLoading: _isLoading,
+                        onTap: _isLoading ? () {} : _toggleRecording,
+                      ),
+                      const SizedBox(width: 16),
+                      GestureDetector(
+                        onTap: _replayReferenceAudio,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFFFF3CD),
+                            border: Border.all(
+                                color: const Color(0xFFFFD700), width: 2),
+                          ),
+                          child: const Center(
+                              child: Text('🔊', style: TextStyle(fontSize: 20))),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// 메시지 데이터 모델
 class _ChatMessage {
   final String text;
   final bool isAi;
@@ -325,7 +462,6 @@ class _ChatMessage {
   });
 }
 
-// 말풍선 위젯
 class _MessageBubble extends StatefulWidget {
   final _ChatMessage message;
 
@@ -371,7 +507,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final isAi = widget.message.isAi;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment:
             isAi ? CrossAxisAlignment.start : CrossAxisAlignment.end,
@@ -383,21 +519,22 @@ class _MessageBubbleState extends State<_MessageBubble> {
             children: [
               if (isAi) ...[
                 const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Color(0xFF4CAF50),
-                  child: Text('AI', style: TextStyle(color: Colors.white, fontSize: 10)),
+                  radius: 18,
+                  backgroundColor: Color(0xFFFF9500),
+                  child: Text('AI',
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
                 ),
                 const SizedBox(width: 8),
               ],
               Flexible(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
+                    horizontal: 16,
+                    vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: isAi ? Colors.white : const Color(0xFF4CAF50),
-                    borderRadius: BorderRadius.circular(16),
+                    color: isAi ? Colors.white : const Color(0xFFFF9500),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.05),
@@ -409,38 +546,36 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     widget.message.text,
                     style: TextStyle(
                       color: isAi ? Colors.black87 : Colors.white,
-                      fontSize: 15,
+                      fontSize: 16,
                     ),
                   ),
                 ),
               ),
-              // 점수 표시 (사용자 발화에만)
               if (!isAi && widget.message.score != null) ...[
                 const SizedBox(width: 8),
                 _ScoreBadge(score: widget.message.score!),
               ],
             ],
           ),
-
-          // 힌트 표시 (AI 메시지에만)
           if (isAi && widget.message.hint != null)
             Padding(
-              padding: const EdgeInsets.only(left: 40, top: 4),
+              padding: const EdgeInsets.only(left: 48, top: 4),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.amber[50],
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.amber.shade300),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('💡 ', style: TextStyle(fontSize: 12)),
+                    const Text('💡 ', style: TextStyle(fontSize: 14)),
                     Text(
                       '"${widget.message.hint}"',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         color: Colors.amber[900],
                         fontStyle: FontStyle.italic,
                       ),
@@ -449,26 +584,24 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 ),
               ),
             ),
-
-          // 발음 피드백 카드 (사용자 발화에만)
           if (!isAi && widget.message.prosodyFeedback != null) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.blue.shade200),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('🗣️ ', style: TextStyle(fontSize: 13)),
+                  const Text('🗣️ ', style: TextStyle(fontSize: 14)),
                   Flexible(
                     child: Text(
                       widget.message.prosodyFeedback!,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         color: Colors.blue[900],
                       ),
                     ),
@@ -477,8 +610,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
               ),
             ),
           ],
-
-          // 원어민 발음 듣기 버튼
           if (!isAi && widget.message.refAudioUrl != null) ...[
             const SizedBox(height: 4),
             Align(
@@ -486,23 +617,25 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: TextButton.icon(
                 onPressed: _togglePlay,
                 icon: Icon(
-                  _isPlaying ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
-                  size: 16,
-                  color: Colors.deepPurple,
+                  _isPlaying
+                      ? Icons.stop_circle_outlined
+                      : Icons.volume_up_outlined,
+                  size: 18,
+                  color: const Color(0xFFFF9500),
                 ),
                 label: Text(
                   _isPlaying ? '멈추기' : '원어민 발음 듣기',
-                  style: const TextStyle(fontSize: 12, color: Colors.deepPurple),
+                  style:
+                      const TextStyle(fontSize: 13, color: Color(0xFFFF9500)),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   minimumSize: Size.zero,
                 ),
               ),
             ),
           ],
-
-          // 억양 분석 토글 (사용자 발화 + 피치 데이터 있을 때)
           if (!isAi && widget.message.prosody != null) ...[
             const SizedBox(height: 4),
             Align(
@@ -511,14 +644,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 onPressed: () => setState(() => _showPitch = !_showPitch),
                 icon: Icon(
                   _showPitch ? Icons.expand_less : Icons.show_chart,
-                  size: 16,
+                  size: 18,
                 ),
                 label: Text(
                   _showPitch ? '분석 닫기' : '발음 분석 보기',
-                  style: const TextStyle(fontSize: 12),
+                  style: const TextStyle(fontSize: 13),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   minimumSize: Size.zero,
                 ),
               ),
@@ -529,7 +663,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -563,23 +697,23 @@ class _ScoreBadge extends StatelessWidget {
 
   Color get _color {
     if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.orange;
+    if (score >= 60) return Colors.amber;
     return Colors.red;
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: _color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
         '${score.toInt()}점',
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -594,14 +728,14 @@ class _ScoreBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Only show when comparison with reference audio was done
     if (prosody.compositeScore == null) return const SizedBox.shrink();
 
     final items = <MapEntry<String, double>>[
       MapEntry('억양', prosody.score),
       if (prosody.rhythmScore != null) MapEntry('리듬', prosody.rhythmScore!),
       if (prosody.stressScore != null) MapEntry('강세', prosody.stressScore!),
-      if (prosody.mfccCosineScore != null) MapEntry('음색', prosody.mfccCosineScore!),
+      if (prosody.mfccCosineScore != null)
+        MapEntry('음색', prosody.mfccCosineScore!),
     ];
 
     return Column(
@@ -609,7 +743,8 @@ class _ScoreBreakdown extends StatelessWidget {
       children: [
         const Text(
           '점수 세부',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+          style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
         ),
         const SizedBox(height: 6),
         ...items.map((e) => _ScoreBar(label: e.key, score: e.value)),
@@ -626,7 +761,7 @@ class _ScoreBar extends StatelessWidget {
 
   Color get _barColor {
     if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.orange;
+    if (score >= 60) return Colors.amber;
     return Colors.redAccent;
   }
 
@@ -637,16 +772,17 @@ class _ScoreBar extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 32,
-            child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+            width: 36,
+            child: Text(label,
+                style: const TextStyle(fontSize: 13, color: Colors.black54)),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: score / 100,
-                minHeight: 8,
+                minHeight: 10,
                 backgroundColor: Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation(_barColor),
               ),
@@ -654,10 +790,10 @@ class _ScoreBar extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           SizedBox(
-            width: 32,
+            width: 36,
             child: Text(
               '${score.toInt()}',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right,
             ),
           ),
